@@ -1,0 +1,97 @@
+# ===========================
+# Python (ai-service)
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+ai-service/downloads/
+ai-service/logs/
+
+# ===========================
+# .NET / C# (backend)
+# ===========================
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.rsuser
+*.db
+*.mdf
+*.ldf
+*.nupkg
+*.snupkg
+*.nuget/
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+TestResults/
+[Tt]emp/
+[Ll]ogs/
+*.DotSettings.user
+
+# Entity Framework migrations (keep source, ignore snapshots if desired)
+# Uncomment below to ignore migrations:
+# backend/**/Migrations/
+
+# ===========================
+# Node.js / React (frontend)
+# ===========================
+node_modules/
+dist/
+.cache/
+.parcel-cache/
+*.local
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Vite
+frontend/dist/
+frontend/.vite/
+
+# ESLint cache
+.eslintcache
+
+# ===========================
+# Environment & Secrets
+# ===========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+secrets.json
+appsettings.Development.json
+
+# ===========================
+# OS & Editor
+# ===========================
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

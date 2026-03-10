@@ -1,0 +1,183 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    background-color: #050508;
+    color: #d8d8e4;
+    font-family: "DM Sans", sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: #050508; }
+  ::-webkit-scrollbar-thumb { background: #b8860b; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #d4a017; }
+
+  ::selection {
+    background: rgba(212, 160, 23, 0.3);
+    color: #f3da87;
+  }
+}
+
+@layer components {
+  /* Gold shimmer text */
+  .text-gold-shimmer {
+    background: linear-gradient(
+      90deg,
+      #b8860b 0%,
+      #f3da87 30%,
+      #d4a017 50%,
+      #f3da87 70%,
+      #b8860b 100%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: shimmer 3s linear infinite;
+  }
+
+  /* Noise texture overlay */
+  .noise-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  /* Gold divider line */
+  .gold-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #d4a017, transparent);
+  }
+
+  /* Card glass effect */
+  .card-glass {
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.01) 100%);
+    border: 1px solid rgba(212,160,23,0.12);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .card-glass:hover {
+    border-color: rgba(212,160,23,0.3);
+    background: linear-gradient(135deg, rgba(212,160,23,0.05) 0%, rgba(255,255,255,0.02) 100%);
+  }
+
+  /* Glow dot */
+  .glow-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #d4a017;
+    box-shadow: 0 0 8px #d4a017, 0 0 20px rgba(212,160,23,0.4);
+  }
+
+  /* Animated underline */
+  .animated-underline {
+    position: relative;
+  }
+  .animated-underline::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -2px;
+    height: 1px;
+    width: 0;
+    background: linear-gradient(90deg, #d4a017, #f3da87);
+    transition: width 0.4s ease;
+  }
+  .animated-underline:hover::after {
+    width: 100%;
+  }
+
+  /* Nav link */
+  .nav-link {
+    @apply text-slate2-400 text-sm tracking-widest uppercase font-body animated-underline transition-colors duration-300 hover:text-gold-300;
+    letter-spacing: 0.12em;
+  }
+
+  /* Gradient border button */
+  .btn-primary {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    background: transparent;
+    color: #d4a017;
+    font-family: "DM Sans", sans-serif;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    border: 1px solid rgba(212,160,23,0.4);
+    cursor: pointer;
+    transition: all 0.35s ease;
+    overflow: hidden;
+  }
+  .btn-primary::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(212,160,23,0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.35s;
+  }
+  .btn-primary:hover {
+    border-color: rgba(212,160,23,0.8);
+    color: #f3da87;
+    box-shadow: 0 0 20px rgba(212,160,23,0.15), inset 0 0 20px rgba(212,160,23,0.05);
+  }
+  .btn-primary:hover::before {
+    opacity: 1;
+  }
+
+  /* Section label */
+  .section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: #d4a017;
+    opacity: 0.8;
+  }
+  .section-label::before {
+    content: "";
+    display: block;
+    width: 24px;
+    height: 1px;
+    background: #d4a017;
+  }
+}
+
+/* Intersection observer fade classes */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
