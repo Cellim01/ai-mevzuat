@@ -2,15 +2,14 @@ using AiMevzuat.Application.Common.Interfaces;
 using AiMevzuat.Application.DTOs;
 using AiMevzuat.Domain.Entities;
 using AiMevzuat.Domain.Common;
+using AiMevzuat.Domain.Enums;
 using MediatR;
 
 namespace AiMevzuat.Application.Features.Auth;
 
-// ── Command ──────────────────────────────────────────────────────────────────
 public record RegisterCommand(string FullName, string Email, string Password)
     : IRequest<AuthResponse>;
 
-// ── Handler ──────────────────────────────────────────────────────────────────
 public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthResponse>
 {
     private readonly IRepository<User> _users;
@@ -32,12 +31,14 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
 
     public async Task<AuthResponse> Handle(RegisterCommand cmd, CancellationToken ct)
     {
-        // E-posta tekrar kontrolü yapılabilir (infrastructure'da)
         var user = new User
         {
             FullName = cmd.FullName,
             Email = cmd.Email.ToLowerInvariant(),
-            PasswordHash = _pwd.Hash(cmd.Password)
+            PasswordHash = _pwd.Hash(cmd.Password),
+            Role = UserRole.Free,
+            IsActive = true,
+            EmailVerified = false,
         };
 
         await _users.AddAsync(user, ct);
@@ -49,7 +50,7 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, AuthRespo
         {
             Token = refreshTokenValue,
             UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(30)
+            ExpiresAt = DateTime.UtcNow.AddDays(30),
         };
 
         await _tokens.AddAsync(refreshToken, ct);

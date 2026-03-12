@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import clsx from "clsx";
+import { useAuth } from "../../context/AuthContext";
 
 const navLinks = [
   { label: "Özellikler", href: "/ozellikler" },
@@ -14,6 +15,8 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { isLoggedIn, logout, isAdmin } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40);
@@ -55,13 +58,28 @@ export default function Navbar() {
 
         {/* CTA */}
         <div className="hidden md:flex items-center gap-6">
-          <Link to="/giris" className="nav-link">
-            Giriş
-          </Link>
-          <Link to="/demo" className="btn-primary text-xs">
-            Ücretsiz Dene
-            <span className="text-gold-300">→</span>
-          </Link>
+          {isLoggedIn ? (
+            <>
+              {isAdmin && (
+                <Link to="/admin" className="nav-link">
+                  Admin
+                </Link>
+              )}
+              <button onClick={() => { logout(); navigate("/"); }} className="nav-link">
+                Çıkış
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/giris" className="nav-link">
+                Giriş
+              </Link>
+              <Link to="/kayit" className="btn-primary text-xs">
+                Ücretsiz Dene
+                <span className="text-gold-300">→</span>
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile toggle */}
@@ -88,9 +106,27 @@ export default function Navbar() {
             </Link>
           ))}
           <div className="gold-line" />
-          <Link to="/demo" className="btn-primary self-start">
-            Ücretsiz Dene →
-          </Link>
+          {isLoggedIn ? (
+            <>
+              {isAdmin && (
+                <Link to="/admin" className="nav-link text-base">
+                  Admin
+                </Link>
+              )}
+              <button onClick={() => { logout(); navigate("/"); }} className="nav-link text-base text-left">
+                Çıkış
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/giris" className="nav-link text-base">
+                Giriş
+              </Link>
+              <Link to="/kayit" className="btn-primary self-start">
+                Ücretsiz Dene →
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

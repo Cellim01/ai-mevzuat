@@ -1,8 +1,8 @@
-"""
-Resmi Gazete Scraper - v6
-- Kirli Word/MS Office HTML temizliği
-- Dayanikli baslik cikarma
-- Probe + fallback URL bulma
+﻿"""
+Resmi Gazete Scraper - v7
+- Robust HTML decode and cleanup
+- Issue number fallback (index + first available detail page)
+- Merge missing index-only items into document list
 """
 
 from __future__ import annotations
@@ -38,20 +38,19 @@ HEADERS = {
     "Accept-Language": "tr-TR,tr;q=0.9,en;q=0.8",
 }
 
+# IMPORTANT: category names must match backend DocumentCategory enum values.
 CATEGORY_RULES: list[tuple[str, list[str]]] = [
-    ("Cumhurbaskanligi", ["cumhurbaskanligi kararname", "cumhurbaskanligi genelge", "cumhurbaskanligi karar"]),
-    ("Bankacilik", ["merkez bankasi", "bddk", "bankacilik duzenleme", "doviz kuru"]),
+    ("Cumhurbaskanligi", ["cumhurbaskanligi kararname", "cumhurbaskanligi genelge", "cumhurbaskanligi karari"]),
+    ("Bankacilik", ["merkez bankasi", "bddk", "bankacilik", "doviz kuru"]),
     ("SermayePiyasasi", ["sermaye piyasasi kurulu", "spk", "borsa istanbul", "yatirim fonu"]),
     ("FinansVergi", ["hazine ve maliye", "gelir vergisi", "kurumlar vergisi", "kdv", "muhasebat", "butce", "stopaj"]),
-    ("DisTicaret", ["disisleri bakanligi", "disisleri bakanl", "ihracat", "ithalat", "gumruk"]),
+    ("DisTicaret", ["disisleri bakanligi", "ticaret bakanligi", "ihracat", "ithalat", "gumruk", "lisansli depo"]),
     ("AkademikIlan", ["universite", "ogretim uyesi", "docent", "profesor", "yuksekogretim", "fakulte"]),
-    ("InsanKaynaklari", ["calisma ve sosyal guvenlik", "sosyal guvenlik kurumu", "is kanunu", "asgari ucret"]),
-    ("Saglik", ["saglik bakanligi", "ilac", "tibbi cihaz", "eczane", "tabip"]),
-    ("CevreEnerji", ["cevre ve sehircilik", "enerji bakanligi", "elektrik piyasasi", "dogalgaz", "epdk"]),
-    ("IhaleIlan", ["artirma, eksiltme", "ihale", "il ozel idaresi", "belediye baskanligi"]),
-    ("YargiIlan", ["yargi ilanlari", "mahkemesinden", "icra mudurlugu", "savciligindan", "tebligat"]),
-    ("YargiKarari", ["anayasa mahkemesi", "yargitay", "danistay", "ilke karari", "mahkeme karari"]),
-    ("CesitliIlan", ["cesitli ilanlar", "ticaret sicili", "tashih", "duzeltme"]),
+    ("InsanKaynaklari", ["calisma ve sosyal guvenlik", "sosyal guvenlik kurumu", "is kanunu", "asgari ucret", "personel"]),
+    ("Saglik", ["saglik bakanligi", "ilac", "tibbi cihaz", "eczane", "tabip", "turk gida kodeksi", "gida"]),
+    ("CevreEnerji", ["cevre", "sehircilik", "enerji", "elektrik", "dogalgaz", "epdk", "iklim", "orman", "tarim ve orman"]),
+    ("IhaleIlan", ["artirma", "eksiltme", "ihale", "ihale ilanlari", "belediye baskanligi", "il ozel idaresi"]),
+    ("YargiCeza", ["anayasa mahkemesi", "yargitay", "danistay", "mahkeme", "savcilik", "icra mudurlugu", "yargi ilanlari"]),
 ]
 
 DOC_TYPE_HINTS = [
@@ -73,25 +72,57 @@ INSTITUTION_RE = re.compile(
 )
 
 TAG_RE = re.compile(r"<[a-zA-Z!/][^>]{0,300}>")
+ISSUE_RE_LIST = [
+    re.compile(r"Say[ıi]\s*[:\-]\s*(\d{5,6})", re.IGNORECASE),
+    re.compile(r"(\d{5,6})\s+Say[ıi]l[ıi]", re.IGNORECASE),
+    re.compile(r"Resm[iî]\s+Gazete.*?(\d{5,6})", re.IGNORECASE | re.DOTALL),
+]
+
 NOISE_SNIPPETS = [
     "xmlns:", "mso-", "tab-stops:", "font-family:", "meta http-equiv",
     "worddocument", "filelist.xml", "style='", "style=\"", "class=", "o:p",
 ]
 
+INDEX_NAV_SKIP = {
+    "arama", "tum kategoriler", "zaman araligi", "son mukerrer", "arsiv", "onceki sayi",
+    "resmi gazetenin kurumsal mobil uygulamasi",
+}
+
+INDEX_SECTION_SKIP = {
+    "yurutme ve idare bolumu",
+    "yargi bolumu",
+    "ilan bolumu",
+    "yonetmelikler",
+    "tebligler",
+    "yargitay kararlari",
+    "yargi ilanlari",
+    "artirma eksiltme ve ihale ilanlari",
+    "cesitli ilanlar",
+}
+
 
 def _normalize_tr(text: str) -> str:
-    repl = str.maketrans({
-        "ç": "c", "Ç": "c",
-        "ğ": "g", "Ğ": "g",
-        "ı": "i", "İ": "i",
-        "ö": "o", "Ö": "o",
-        "ş": "s", "Ş": "s",
-        "ü": "u", "Ü": "u",
-        "â": "a", "Â": "a",
-        "î": "i", "Î": "i",
-        "û": "u", "Û": "u",
-    })
+    repl = str.maketrans(
+        {
+            "ç": "c", "Ç": "c",
+            "ğ": "g", "Ğ": "g",
+            "ı": "i", "İ": "i",
+            "ö": "o", "Ö": "o",
+            "ş": "s", "Ş": "s",
+            "ü": "u", "Ü": "u",
+            "â": "a", "Â": "a",
+            "î": "i", "Î": "i",
+            "û": "u", "Û": "u",
+        }
+    )
     return text.translate(repl)
+
+
+def _title_key(title: str) -> str:
+    t = _normalize_tr(title).lower()
+    t = re.sub(r"[^a-z0-9 ]+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
 
 
 def _decode_response(resp: httpx.Response) -> str:
@@ -104,6 +135,17 @@ def _decode_response(resp: httpx.Response) -> str:
         except (UnicodeDecodeError, LookupError):
             continue
     return resp.text
+
+
+def _extract_issue_number_from_text(text: str) -> int | None:
+    for regex in ISSUE_RE_LIST:
+        mobj = regex.search(text)
+        if not mobj:
+            continue
+        value = int(mobj.group(1))
+        if 20000 <= value <= 40000:
+            return value
+    return None
 
 
 def _detect_category(text: str) -> str:
@@ -184,7 +226,6 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
     for c in s.find_all(string=lambda t: isinstance(t, Comment)):
         c.extract()
 
-    # 1) Belge türü
     doc_type = ""
     for span in s.find_all("span", style=True):
         style = (span.get("style") or "").lower()
@@ -203,7 +244,6 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
     institution = ""
     institution_tag = None
 
-    # 2) Önce class bazlı kurum bul (Word HTML için en güvenilir yol)
     for p in s.find_all("p", class_=True):
         cls = p.get("class", [])
         cls_str = " ".join(cls) if isinstance(cls, list) else str(cls)
@@ -215,7 +255,6 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
             institution_tag = p
             break
 
-    # 2.a) Kurum "Üniversitesinden:" diye parçalandıysa bir önceki satırı birleştir
     if institution_tag is not None and institution:
         prev_p = institution_tag.find_previous_sibling("p")
         if prev_p:
@@ -225,7 +264,6 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
                 if ninst.startswith(("universitesinden", "bakanligindan", "mudurlugunden", "baskanligindan")):
                     institution = f"{prev_text} {institution}"
 
-    # 3) Kurumdan sonraki OrtaBalk başlık satırları
     heading_parts: list[str] = []
     if institution_tag is not None:
         for sib in institution_tag.find_next_siblings("p"):
@@ -242,25 +280,21 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
             if heading_parts:
                 break
 
-    # 4) Fallback: düz metinde uppercase blok ara
     if not heading_parts:
         lines = [ln.strip() for ln in s.get_text("\n").splitlines() if ln.strip()]
         lines = [ln for ln in lines if not SKIP_LINE_RE.match(_normalize_tr(ln).lower())]
 
-        # kurum bul
         if not institution:
-            for i, line in enumerate(lines[:140]):
+            for i, line in enumerate(lines[:160]):
                 if INSTITUTION_RE.search(_normalize_tr(line).lower()):
                     institution = line.rstrip(":")
-                    # kurum parçalıysa önceki satırı birleştir
                     if i > 0 and len(lines[i - 1]) <= 40:
                         ninst = _normalize_tr(institution).lower()
                         if ninst.startswith(("universitesinden", "bakanligindan", "mudurlugunden", "baskanligindan")):
                             institution = f"{lines[i - 1]} {institution}"
                     break
 
-        # heading
-        for i, line in enumerate(lines[:120]):
+        for i, line in enumerate(lines[:160]):
             if _is_heading_line(line):
                 heading_parts.append(line)
                 for nxt in lines[i + 1:i + 8]:
@@ -272,7 +306,6 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
 
     title_main = " ".join(heading_parts).strip()
 
-    # 5) En son fallback: <title>
     if not title_main and s.title and s.title.get_text(strip=True):
         title_main = s.title.get_text(" ", strip=True)
         title_main = re.sub(r"\s*-\s*Resm[iî]\s+Gazete.*$", "", title_main, flags=re.IGNORECASE).strip()
@@ -290,25 +323,28 @@ def _extract_title_and_doctype(soup: BeautifulSoup) -> tuple[str, str]:
     return title[:500], doc_type
 
 
-
 class GazetteScraper:
     def __init__(self):
         self.download_dir = Path(settings.gazette_download_dir)
         self.download_dir.mkdir(parents=True, exist_ok=True)
 
     async def scrape(self, target_date: date) -> dict | None:
-        logger.info(f"══ Scrape basliyor -> {target_date} ══")
+        logger.info(f"== Scrape basliyor -> {target_date} ==")
 
         y = target_date.strftime("%Y")
         m = target_date.strftime("%m")
         ds = target_date.strftime("%Y%m%d")
 
-        issue_number = await self._get_issue_number(y, m, ds)
-        doc_urls = await self._probe_document_urls(ds, y, m)
+        index_data = await self._get_index_snapshot(y, m, ds)
+        issue_number = index_data["issue_number"]
 
-        if not doc_urls:
+        doc_urls = await self._probe_document_urls(ds, y, m)
+        if not doc_urls and not index_data["entries"]:
             logger.error(f"Hic belge bulunamadi: {target_date}")
             return None
+
+        if issue_number is None:
+            issue_number = await self._get_issue_number(y, m, ds, doc_urls)
 
         logger.info(f"Sayi: {issue_number} | {len(doc_urls)} belge bulundu")
 
@@ -317,7 +353,21 @@ class GazetteScraper:
         docs = await asyncio.gather(*tasks)
         documents = [d for d in docs if d is not None]
 
-        logger.success(f"══ Tamamlandi -> {len(documents)}/{len(doc_urls)} belge ══")
+        issue_pdf_url = f"{BASE_URL}/eskiler/{y}/{m}/{ds}.pdf"
+        added_from_index = self._merge_index_entries(
+            documents,
+            index_data["entries"],
+            index_data["url"],
+            issue_pdf_url,
+        )
+
+        if issue_number is None and documents:
+            issue_number = _extract_issue_number_from_text(documents[0].get("raw_text", ""))
+
+        logger.success(f"== Tamamlandi -> {len(documents)}/{len(doc_urls)} belge ==")
+        if added_from_index > 0:
+            logger.info(f"Index'ten ekstra {added_from_index} kayit eklendi")
+
         for doc in documents:
             logger.info(f"  [{doc['index']:02d}] [{doc['category']}] {doc['title']}")
 
@@ -327,38 +377,233 @@ class GazetteScraper:
             "documents": documents,
         }
 
-    async def _get_issue_number(self, y: str, m: str, ds: str) -> int | None:
-        url = f"{BASE_URL}/eskiler/{y}/{m}/{ds}-1.htm"
-        patterns = [
-            r"Say[ıi]\s*[:\-]\s*(\d{5,6})",
-            r"(\d{5,6})\s+Say[ıi]l[ıi]",
-            r"Resm[iî]\s+Gazete.*?(\d{5,6})",
+    async def _get_issue_number(self, y: str, m: str, ds: str, doc_urls: list[str]) -> int | None:
+        candidates = [
+            f"{BASE_URL}/eskiler/{y}/{m}/{ds}.htm",
+            f"{BASE_URL}/eskiler/{y}/{m}/{ds}-1.htm",
         ]
+        candidates.extend(doc_urls[:3])
+
+        tried: set[str] = set()
+        async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=20) as client:
+            for url in candidates:
+                if url in tried:
+                    continue
+                tried.add(url)
+                try:
+                    resp = await client.get(url)
+                    if resp.status_code != 200:
+                        continue
+                    text = _decode_response(resp)
+                    issue = _extract_issue_number_from_text(text)
+                    if issue is not None:
+                        return issue
+                except Exception:
+                    continue
+        return None
+
+    async def _get_index_snapshot(self, y: str, m: str, ds: str) -> dict:
+        url = f"{BASE_URL}/eskiler/{y}/{m}/{ds}.htm"
 
         try:
             async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=20) as client:
                 resp = await client.get(url)
-                resp.raise_for_status()
+                if resp.status_code != 200:
+                    return {"issue_number": None, "entries": [], "url": url}
 
-            text = _decode_response(resp)
-            for p in patterns:
-                mobj = re.search(p, text, re.IGNORECASE | re.DOTALL)
-                if mobj:
-                    value = int(mobj.group(1))
-                    if 20000 <= value <= 40000:
-                        return value
+            html_text = _decode_response(resp)
+            issue = _extract_issue_number_from_text(html_text)
+            soup = BeautifulSoup(html_text, "lxml")
+            entries = self._extract_index_entries(soup)
+            return {"issue_number": issue, "entries": entries, "url": url}
         except Exception:
-            pass
+            return {"issue_number": None, "entries": [], "url": url}
 
-        return None
+    def _extract_index_entries(self, soup: BeautifulSoup) -> list[dict]:
+        entries: list[dict] = []
+        seen: set[str] = set()
+
+        raw_lines = [re.sub(r"\s+", " ", ln).strip() for ln in soup.get_text("\n").splitlines()]
+        lines = [ln for ln in raw_lines if ln]
+
+        def normalized(line: str) -> str:
+            return re.sub(r"\s+", " ", _normalize_tr(line).lower()).strip()
+
+        def is_noise_or_section(line: str) -> bool:
+            n = normalized(line)
+            if not n:
+                return True
+            if SKIP_LINE_RE.match(n):
+                return True
+            if n in INDEX_SECTION_SKIP:
+                return True
+            if any(skip in n for skip in INDEX_NAV_SKIP):
+                return True
+            if "kurumsal mobil uygulamasi" in n:
+                return True
+            if "tc resmi gazete" in n and "yerini almistir" in n:
+                return True
+            if re.match(r"^[abc]\s*[-–—]\s*", n):
+                return True
+            if re.match(r"^(yargi ilanlari|artirma\,? eksiltme ve ihale ilanlari|cesitli ilanlar)\b", n):
+                return True
+            return False
+
+        def add_entry(title: str, doc_type: str) -> None:
+            title = re.sub(r"\s+", " ", title).strip()
+            title = re.sub(r"\s+([,.;:])", r"\1", title)
+
+            title = re.sub(
+                r"Resm[iî]\s+Gazete.?nin\s+kurumsal\s+mobil\s+uygulamas[ıi].*$",
+                "",
+                title,
+                flags=re.IGNORECASE,
+            ).strip()
+            title = re.sub(r"kurumsal\s+mobil\s+uygulamas[ıi].*$", "", title, flags=re.IGNORECASE).strip()
+
+            if len(title) < 12:
+                return
+
+            split_titles = [
+                s.strip(" -—–")
+                for s in re.split(r"\s+[—–-]{1,2}\s+", title)
+                if s.strip(" -—–")
+            ]
+            if len(split_titles) > 1:
+                for st in split_titles:
+                    add_entry(st, doc_type)
+                return
+
+            n = normalized(title)
+            if is_noise_or_section(title):
+                return
+            if len(n) < 12:
+                return
+
+            key = _title_key(title)
+            if key in seen:
+                return
+            seen.add(key)
+
+            entries.append(
+                {
+                    "title": title,
+                    "raw_text": title,
+                    "doc_type": doc_type,
+                    "category": _detect_category(title),
+                }
+            )
+
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            bullet_match = re.match(r"^[—–-]\s*(.+)$", line)
+
+            if bullet_match:
+                parts = [bullet_match.group(1).strip()]
+                j = i + 1
+
+                while j < len(lines):
+                    nxt = lines[j].strip()
+                    if not nxt:
+                        break
+                    if re.match(r"^[—–-]\s+", nxt):
+                        break
+                    if is_noise_or_section(nxt):
+                        break
+                    if _is_heading_line(nxt) and len(nxt) <= 70:
+                        break
+
+                    parts.append(nxt)
+                    j += 1
+
+                add_entry(" ".join(parts), "IndexKaydi")
+                i = j
+                continue
+
+            nline = normalized(line)
+            if not is_noise_or_section(line) and _is_heading_line(line) and "karar" in nline:
+                j = i + 1
+                while j < len(lines):
+                    nxt = lines[j].strip()
+                    if not nxt:
+                        break
+                    if is_noise_or_section(nxt):
+                        break
+                    if re.match(r"^[—–-]\s+", nxt):
+                        break
+                    if not _is_heading_line(nxt):
+                        break
+                    line = f"{line} {nxt}"
+                    j += 1
+
+                add_entry(line, "IndexBaslik")
+                i = j
+                continue
+
+            i += 1
+
+        return entries
+    def _merge_index_entries(
+        self,
+        documents: list[dict],
+        index_entries: list[dict],
+        index_url: str,
+        issue_pdf_url: str,
+    ) -> int:
+        if not index_entries:
+            return 0
+
+        existing_keys = [_title_key(d.get("title", "")) for d in documents]
+        added = 0
+
+        for entry in index_entries:
+            title = entry.get("title", "").strip()
+            if not title:
+                continue
+
+            key = _title_key(title)
+            if len(key) < 12:
+                continue
+
+            duplicate = False
+            for ex in existing_keys:
+                if not ex:
+                    continue
+                if key == ex or key in ex or ex in key:
+                    duplicate = True
+                    break
+
+            if duplicate:
+                continue
+
+            documents.append(
+                {
+                    "index": len(documents) + 1,
+                    "title": title,
+                    "doc_type": entry.get("doc_type", "IndexKaydi"),
+                    "raw_text": entry.get("raw_text", title),
+                    "html_url": index_url,
+                    "pdf_url": issue_pdf_url,
+                    "local_pdf_path": None,
+                    "category": entry.get("category") or _detect_category(title),
+                }
+            )
+            existing_keys.append(key)
+            added += 1
+
+        return added
 
     async def _probe_document_urls(self, date_str: str, y: str, m: str) -> list[str]:
         urls: list[str] = []
 
+        max_probe = 200
+        max_consecutive_misses = 25
+
         async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=10) as client:
             consecutive_misses = 0
 
-            for i in range(1, 100):
+            for i in range(1, max_probe + 1):
                 url = f"{BASE_URL}/eskiler/{y}/{m}/{date_str}-{i}.htm"
                 try:
                     resp = await client.head(url)
@@ -379,11 +624,11 @@ class GazetteScraper:
                             continue
 
                     consecutive_misses += 1
-                    if consecutive_misses >= 10 and i > 10:
+                    if consecutive_misses >= max_consecutive_misses and i > max_consecutive_misses:
                         break
                 except Exception:
                     consecutive_misses += 1
-                    if consecutive_misses >= 10 and i > 10:
+                    if consecutive_misses >= max_consecutive_misses and i > max_consecutive_misses:
                         break
 
         logger.info(f"Probe: {len(urls)} URL bulundu")
@@ -481,3 +726,4 @@ class GazetteScraper:
                 if pdf_path.exists():
                     pdf_path.unlink()
                 return None
+
