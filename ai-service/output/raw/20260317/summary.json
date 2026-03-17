@@ -1,0 +1,10 @@
+﻿{
+  "date": "2026-03-17",
+  "index_url": "https://www.resmigazete.gov.tr/eskiler/2026/03/20260317.htm",
+  "documents_written": 3,
+  "output_jsonl": "output/raw/20260317/documents_raw.jsonl",
+  "notes": [
+    "This pipeline intentionally stops before title/category normalization (step 3).",
+    "PDF sources are OCRed directly with high-contrast preprocessing."
+  ]
+}
