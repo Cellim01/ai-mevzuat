@@ -244,4 +244,29 @@ export const adminApi = {
     const res = await fetch(buildAiUrl("/scrape/jobs"));
     return res.json();
   },
+
+  async scrapeRaw(date, options = {}) {
+    const payload = {
+      date,
+      max_docs: options.maxDocs ?? 0,
+      include_main_pdf: options.includeMainPdf ?? false,
+      keep_debug_images: options.keepDebugImages ?? false,
+      allow_table_pages: options.allowTablePages ?? false,
+      save_to_backend: options.saveToBackend ?? true,
+      only_urls: options.onlyUrls ?? null,
+      preview_limit: options.previewLimit ?? 20,
+    };
+
+    const res = await fetch(buildAiUrl("/scrape/raw"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return res.json();
+  },
+
+  async getRawOutput(date, limit = 20) {
+    const res = await fetch(buildAiUrl(`/scrape/raw/output/${date}?limit=${limit}`));
+    return res.json();
+  },
 };

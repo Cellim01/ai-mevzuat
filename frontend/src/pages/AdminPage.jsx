@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { adminApi, gazetteApi } from "../services/api";
-import { RefreshCw, Play, CheckCircle, XCircle, Clock, Database, Zap, LogOut } from "lucide-react";
+import { RefreshCw, Play, CheckCircle, Clock, Database, Zap, LogOut } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function StatusDot({ ok }) {
@@ -34,6 +34,15 @@ function JobCard({ job }) {
       {job.document_count != null && (
         <p className="text-slate2-400 text-xs">{job.document_count} belge</p>
       )}
+      {job.pipeline && (
+        <p className="text-slate2-400 text-xs">Pipeline: {job.pipeline}</p>
+      )}
+      {job.table_pages_masked_total != null && (
+        <p className="text-slate2-400 text-xs">Maskelenen tablo sayfasi: {job.table_pages_masked_total}</p>
+      )}
+      {job.table_regions_masked_total != null && (
+        <p className="text-slate2-400 text-xs">Maskelenen tablo bolgesi: {job.table_regions_masked_total}</p>
+      )}
       {job.message && (
         <p className="text-slate2-400 text-xs mt-1 truncate">{job.message}</p>
       )}
@@ -58,7 +67,10 @@ export default function AdminPage() {
   const [issues, setIssues]       = useState([]);
   const [scrapeDate, setScrapeDate] = useState(new Date().toISOString().split("T")[0]);
   const [saveToBackend, setSaveToBackend] = useState(true);
-  const [scraping, setScraping]   = useState(false);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawOutput, setRawOutput] = useState(null);
+  const [rawInfo, setRawInfo] = useState("");
+  const [rawError, setRawError] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
   const pollRef = useRef(null);
 
@@ -99,27 +111,51 @@ export default function AdminPage() {
   }, []);
 
   // ── Scrape tetikle ────────────────────────────────────────────────────────
-  const handleScrape = async () => {
-    setScraping(true);
+  const handleRawScrape = async () => {
+    setRawLoading(true);
+    setRawInfo("");
+    setRawError("");
     try {
-      await adminApi.scrape(scrapeDate, saveToBackend);
+      const result = await adminApi.scrapeRaw(scrapeDate, {
+        maxDocs: 0,
+        keepDebugImages: true,
+        allowTablePages: false,
+        saveToBackend,
+        previewLimit: 30,
+      });
+
+      if (result?.status === "started" && result?.job_id) {
+        setRawInfo(`Raw OCR job baslatildi: ${result.job_id}`);
+      } else if (result?.status === "completed") {
+        setRawInfo("Raw OCR tamamlandi.");
+      } else {
+        setRawInfo("Raw OCR job tetiklendi.");
+      }
+
       setTimeout(refreshJobs, 1000);
     } catch (e) {
-      alert("Scrape başlatılamadı: " + e.message);
+      setRawError("Raw OCR baslatilamadi: " + e.message);
     } finally {
-      setScraping(false);
+      setRawLoading(false);
     }
   };
 
-  const handleScrapeToday = async () => {
-    setScraping(true);
+  const loadRawOutput = async () => {
+    setRawLoading(true);
+    setRawInfo("");
+    setRawError("");
     try {
-      await adminApi.scrapeToday(saveToBackend);
-      setTimeout(refreshJobs, 1000);
+      const data = await adminApi.getRawOutput(scrapeDate, 30);
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+      setRawOutput(data);
+      setRawInfo(`${scrapeDate} icin raw cikti yuklendi.`);
     } catch (e) {
-      alert("Scrape başlatılamadı: " + e.message);
+      setRawOutput(null);
+      setRawError("Raw cikti okunamadi: " + e.message);
     } finally {
-      setScraping(false);
+      setRawLoading(false);
     }
   };
 
@@ -235,10 +271,11 @@ export default function AdminPage() {
 
         {/* ── Scrape ── */}
         {activeTab === "scrape" && (
-          <div className="max-w-lg">
-            <h1 className="font-display text-3xl mb-8">Scrape Tetikle</h1>
+          <div className="max-w-6xl">
+            <h1 className="font-display text-3xl mb-8">Raw OCR Pipeline</h1>
 
-            <div className="bg-obsidian-800 border border-gold-700/10 rounded-xl p-6 space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="bg-obsidian-800 border border-gold-700/10 rounded-xl p-6 space-y-6">
               {/* Tarih seç */}
               <div>
                 <label className="block text-slate2-400 text-xs mb-2 tracking-wider uppercase">
@@ -273,27 +310,112 @@ export default function AdminPage() {
               {/* Butonlar */}
               <div className="flex gap-3">
                 <button
-                  onClick={handleScrape}
-                  disabled={scraping}
+                  onClick={handleRawScrape}
+                  disabled={rawLoading}
                   className="flex-1 flex items-center justify-center gap-2 bg-gold-500 hover:bg-gold-400 disabled:opacity-50 text-obsidian-950 font-medium text-sm py-3 rounded-lg transition-colors"
                 >
                   <Play size={14} />
-                  {scraping ? "Başlatılıyor..." : "Scrape Et"}
+                  {rawLoading ? "Çalışıyor..." : "Raw OCR Başlat"}
                 </button>
                 <button
-                  onClick={handleScrapeToday}
-                  disabled={scraping}
+                  onClick={loadRawOutput}
+                  disabled={rawLoading}
                   className="flex-1 flex items-center justify-center gap-2 bg-obsidian-700 hover:bg-obsidian-600 disabled:opacity-50 text-slate2-200 text-sm py-3 rounded-lg border border-gold-700/20 transition-colors"
                 >
-                  <Zap size={14} />
-                  Bugünü Çek
+                  <Database size={14} />
+                  Çıktıyı Göster
                 </button>
               </div>
 
               <p className="text-slate2-400 text-xs">
-                Scrape arka planda çalışır. Job'lar sekmesinden takip edebilirsiniz.
+                Raw OCR arka planda çalışır. SQL kaydı için yukarıdaki toggle kullanılır.
               </p>
             </div>
+            <div className="bg-obsidian-800 border border-gold-700/10 rounded-xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-slate2-200 font-medium">Raw OCR Pipeline</h2>
+                  <p className="text-slate2-400 text-xs">Seçilen tarih için ham OCR çıktıları yüklenir.</p>
+                </div>
+                <button
+                  onClick={refreshJobs}
+                  className="text-slate2-400 hover:text-gold-400 text-xs transition-colors"
+                >
+                  Job'ları Yenile
+                </button>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleRawScrape}
+                  disabled={rawLoading}
+                  className="flex-1 flex items-center justify-center gap-2 bg-gold-500 hover:bg-gold-400 disabled:opacity-50 text-obsidian-950 font-medium text-sm py-3 rounded-lg transition-colors"
+                >
+                  <Play size={14} />
+                  {rawLoading ? "Çalışıyor..." : "Raw OCR Başlat"}
+                </button>
+                <button
+                  onClick={loadRawOutput}
+                  disabled={rawLoading}
+                  className="flex-1 flex items-center justify-center gap-2 bg-obsidian-700 hover:bg-obsidian-600 disabled:opacity-50 text-slate2-200 text-sm py-3 rounded-lg border border-gold-700/20 transition-colors"
+                >
+                  <Database size={14} />
+                  Çıktıyı Göster
+                </button>
+              </div>
+
+              {rawInfo && (
+                <p className="text-emerald-400 text-xs">{rawInfo}</p>
+              )}
+              {rawError && (
+                <p className="text-red-400 text-xs">{rawError}</p>
+              )}
+
+              {rawOutput && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-obsidian-900 border border-gold-700/10 rounded-lg px-3 py-2">
+                      <p className="text-slate2-400 text-[11px]">Kaynak</p>
+                      <p className="text-slate2-200 text-sm">{rawOutput.source_count ?? 0}</p>
+                    </div>
+                    <div className="bg-obsidian-900 border border-gold-700/10 rounded-lg px-3 py-2">
+                      <p className="text-slate2-400 text-[11px]">Belge</p>
+                      <p className="text-slate2-200 text-sm">{rawOutput.summary?.documents_written ?? 0}</p>
+                    </div>
+                    <div className="bg-obsidian-900 border border-gold-700/10 rounded-lg px-3 py-2">
+                      <p className="text-slate2-400 text-[11px]">Tablo Sayfası</p>
+                      <p className="text-slate2-200 text-sm">{rawOutput.summary?.table_pages_masked_total ?? 0}</p>
+                    </div>
+                    <div className="bg-obsidian-900 border border-gold-700/10 rounded-lg px-3 py-2">
+                      <p className="text-slate2-400 text-[11px]">Tablo Bölgesi</p>
+                      <p className="text-slate2-200 text-sm">{rawOutput.summary?.table_regions_masked_total ?? 0}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-h-80 overflow-auto pr-1">
+                    {(rawOutput.documents_preview || []).map((doc, idx) => (
+                      <div
+                        key={`${doc.source_url || doc.title_hint || "doc"}_${idx}`}
+                        className="bg-obsidian-900 border border-gold-700/10 rounded-lg px-3 py-2"
+                      >
+                        <p className="text-slate2-200 text-xs font-medium truncate">
+                          {doc.title_hint || doc.source_url || "Belge"}
+                        </p>
+                        <p className="text-slate2-400 text-[11px] mt-1">
+                          {doc.source_type || "unknown"} • {doc.char_count ?? 0} karakter
+                        </p>
+                        {doc.table_detected && (
+                          <p className="text-gold-400 text-[11px] mt-1">
+                            tablo algılandı (sayfa {doc.table_pages_masked ?? 0}, bölge {doc.table_regions_masked ?? 0})
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
           </div>
         )}
 

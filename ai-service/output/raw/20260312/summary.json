@@ -1,0 +1,14 @@
+﻿{
+  "date": "2026-03-12",
+  "index_url": "https://www.resmigazete.gov.tr/eskiler/2026/03/20260312.htm",
+  "documents_written": 1,
+  "docs_with_table_pages": 1,
+  "table_pages_masked_total": 4,
+  "table_regions_masked_total": 7,
+  "output_jsonl": "output/raw/20260312/documents_raw.jsonl",
+  "notes": [
+    "This pipeline intentionally stops before title/category normalization (step 3).",
+    "PDF sources are OCRed directly with high-contrast preprocessing.",
+    "Table-like regions are masked before OCR so non-table content on the same page is preserved."
+  ]
+}

@@ -38,6 +38,25 @@ python scripts/rg_stage12_pipeline.py \
   --max-docs 10
 ```
 
+Table-like regions in PDF pages are masked by default (to avoid broken table OCR text),
+while non-table text on the same page is still preserved.
+To keep table regions too:
+
+```bash
+python scripts/rg_stage12_pipeline.py --date 2026-03-17 --allow-table-pages
+```
+
+Run only specific source URL(s):
+
+```bash
+python scripts/rg_stage12_pipeline.py \
+  --date 2026-03-17 \
+  --only-url https://www.resmigazete.gov.tr/eskiler/2026/03/20260317-11.pdf \
+  --keep-debug-images
+```
+
+`--only-url` can also take `.htm` links directly (even if they are not listed in index parsing output).
+
 Include the full issue PDF too:
 
 ```bash
