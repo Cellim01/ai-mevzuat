@@ -15,7 +15,6 @@ from pydantic import BaseModel
 
 from scripts.ocr_utils import OcrConfig
 from scripts.rg_stage12_pipeline import run_pipeline
-from parser.pdf_parser import PdfParser
 from scraper.gazette_scraper import GazetteScraper
 from utils.backend_client import BackendClient
 from utils.config import settings
@@ -50,7 +49,6 @@ app.add_middleware(
 )
 
 scraper = GazetteScraper()
-parser = PdfParser()
 backend_client = BackendClient()
 
 _jobs: dict[str, dict] = {}

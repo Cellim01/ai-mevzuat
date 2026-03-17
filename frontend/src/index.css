@@ -164,6 +164,120 @@
     height: 1px;
     background: #d4a017;
   }
+
+  /* ── Admin Panel Utilities ─────────────────────────────────── */
+
+  /* Glassmorphism card for admin panels */
+  .admin-card {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.03) 0%,
+      rgba(255, 255, 255, 0.008) 100%
+    );
+    border: 1px solid rgba(212, 160, 23, 0.1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 16px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .admin-card:hover {
+    border-color: rgba(212, 160, 23, 0.25);
+    background: linear-gradient(
+      135deg,
+      rgba(212, 160, 23, 0.04) 0%,
+      rgba(255, 255, 255, 0.015) 100%
+    );
+    box-shadow: 0 8px 32px rgba(212, 160, 23, 0.06),
+                0 0 0 1px rgba(212, 160, 23, 0.08);
+    transform: translateY(-2px);
+  }
+
+  /* Stat card with gold emphasis */
+  .admin-stat-value {
+    background: linear-gradient(135deg, #d4a017 0%, #f3da87 60%, #e8c04a 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Pulsing status dot */
+  .status-pulse {
+    position: relative;
+  }
+  .status-pulse::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    background: inherit;
+    opacity: 0;
+    animation: statusPulse 2s ease-in-out infinite;
+  }
+
+  /* Sidebar active tab indicator */
+  .tab-active-bar {
+    position: relative;
+  }
+  .tab-active-bar::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    border-radius: 0 4px 4px 0;
+    background: linear-gradient(180deg, #d4a017, #f3da87);
+    box-shadow: 0 0 8px rgba(212, 160, 23, 0.4);
+  }
+
+  /* Admin header bar glass */
+  .admin-header-glass {
+    background: linear-gradient(
+      135deg,
+      rgba(10, 10, 16, 0.8) 0%,
+      rgba(5, 5, 8, 0.9) 100%
+    );
+    border-bottom: 1px solid rgba(212, 160, 23, 0.08);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* Toggle switch */
+  .admin-toggle {
+    position: relative;
+    width: 44px;
+    height: 24px;
+    border-radius: 12px;
+    transition: background 0.3s ease;
+    cursor: pointer;
+  }
+  .admin-toggle::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  }
+  .admin-toggle.active {
+    background: linear-gradient(135deg, #b8860b, #d4a017);
+  }
+  .admin-toggle.active::after {
+    transform: translateX(20px);
+  }
+  .admin-toggle:not(.active) {
+    background: #22222c;
+  }
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 0; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.8); }
 }
 
 /* Intersection observer fade classes */
