@@ -219,22 +219,6 @@ export const adminApi = {
     return res.json();
   },
 
-  async scrape(date, saveToBackend = true) {
-    const res = await fetch(buildAiUrl("/scrape"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date, save_to_backend: saveToBackend }),
-    });
-    return res.json();
-  },
-
-  async scrapeToday(saveToBackend = true) {
-    const res = await fetch(buildAiUrl(`/scrape/today?save_to_backend=${saveToBackend}`), {
-      method: "POST",
-    });
-    return res.json();
-  },
-
   async jobStatus(jobId) {
     const res = await fetch(buildAiUrl(`/scrape/status/${jobId}`));
     return res.json();

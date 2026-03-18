@@ -26,13 +26,17 @@ class BackendClient:
         for d in scrape_result.get("documents", []):
             docs.append(
                 {
-                    "Index": d.get("index"),
-                    "Title": d.get("title", ""),
-                    "RawText": d.get("raw_text", ""),
-                    "HtmlUrl": d.get("html_url", ""),
-                    "PdfUrl": d.get("pdf_url", ""),
-                    "LocalPdfPath": d.get("local_pdf_path"),
-                    "Category": d.get("category", "Diger"),
+                    "Index":         d.get("index"),
+                    "Title":         d.get("title", ""),
+                    "RawText":       d.get("raw_text", ""),
+                    "HtmlUrl":       d.get("html_url", "") or "",
+                    "PdfUrl":        d.get("pdf_url", "") or "",
+                    "LocalFilePath": d.get("local_file_path"),
+                    "SourceType":    d.get("source_type", "pdf"),
+                    "Category":      d.get("category", "Diger"),
+                    "StartPage":     d.get("start_page", 0),
+                    "EndPage":       d.get("end_page", 0),
+                    "TableDetected": d.get("table_detected", False),
                 }
             )
 

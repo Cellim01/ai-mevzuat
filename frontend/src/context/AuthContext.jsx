@@ -19,7 +19,15 @@ function decodeJwt(token) {
 function normalizeRole(value) {
   if (!value) return "Free";
   if (Array.isArray(value)) return normalizeRole(value[0]);
-  return String(value);
+  const raw = String(value).trim();
+  const key = raw.toLowerCase();
+
+  if (key === "99" || key === "admin") return "Admin";
+  if (key === "2" || key === "enterprise") return "Enterprise";
+  if (key === "1" || key === "professional") return "Professional";
+  if (key === "0" || key === "free") return "Free";
+
+  return raw;
 }
 
 function mapPayloadToUser(payload) {

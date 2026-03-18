@@ -15,7 +15,6 @@ from pydantic import BaseModel
 
 from scripts.ocr_utils import OcrConfig
 from scripts.rg_stage12_pipeline import run_pipeline
-from scraper.gazette_scraper import GazetteScraper
 from utils.backend_client import BackendClient
 from utils.config import settings
 
@@ -30,7 +29,7 @@ logger.add("logs/ai_service.log", rotation="10 MB", retention="7 days", encoding
 
 app = FastAPI(
     title="AI-Mevzuat AI Service",
-    description="Resmi Gazete scraper, parser ve RAG pipeline servisi",
+    description="Resmi Gazete raw OCR pipeline servisi",
     version="0.3.0",
 )
 
@@ -48,25 +47,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-scraper = GazetteScraper()
 backend_client = BackendClient()
 
 _jobs: dict[str, dict] = {}
 _raw_output_root = Path("output/raw")
-
-
-class ScrapeRequest(BaseModel):
-    date: date
-    save_to_backend: bool = True
-
-
-class ScrapeResponse(BaseModel):
-    status: str
-    job_id: str | None = None
-    issue_number: int | None = None
-    document_count: int = 0
-    saved_to_backend: bool = False
-    message: str = ""
 
 
 class RawScrapeRequest(BaseModel):
@@ -148,20 +132,118 @@ def _collapse_ws(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "")).strip()
 
 
-def _guess_title_from_row(row: dict[str, Any], index: int) -> str:
-    hint = _collapse_ws(str(row.get("title_hint", "")))
-    if hint:
-        return hint[:500]
+def _normalize_tr(text: str) -> str:
+    tr_map = str.maketrans(
+        {
+            "\u00e7": "c",
+            "\u00c7": "c",
+            "\u011f": "g",
+            "\u011e": "g",
+            "\u0131": "i",
+            "\u0130": "i",
+            "\u00f6": "o",
+            "\u00d6": "o",
+            "\u015f": "s",
+            "\u015e": "s",
+            "\u00fc": "u",
+            "\u00dc": "u",
+            "\u00e2": "a",
+            "\u00c2": "a",
+            "\u00ee": "i",
+            "\u00ce": "i",
+            "\u00fb": "u",
+            "\u00db": "u",
+        }
+    )
+    return (text or "").translate(tr_map)
 
-    raw_text = str(row.get("raw_text", ""))
-    for line in raw_text.splitlines():
-        ln = _collapse_ws(line)
-        if not ln:
+
+def _clean_title_hint(title: str) -> str:
+    t = _collapse_ws((title or "").replace("\n", " "))
+    t = re.sub(r"^[\u2013\u2014-]+\s*", "", t)
+    t = re.sub(r"^[a-z\u00e7\u011f\u0131\u00f6\u015f\u00fc]\s*-\s*", "", t, flags=re.IGNORECASE)
+    t = _collapse_ws(t)
+    if len(t) < 4:
+        return ""
+    return t[:500]
+
+
+def _extract_title_from_raw_text(raw_text: str) -> str:
+    lines = [ln.strip() for ln in (raw_text or "").splitlines() if ln.strip()]
+    skip_re = re.compile(
+        r"^(?:\[\s*PAGE\s+\d+\s*\]|"
+        r"\d{1,2}\s+\w+\s+\d{4}\s+\w+|"
+        r"Resm[i\u00ee]\s+Gazete|"
+        r"Say[\u0131i]\s*:|"
+        r"Karar\s+Say[\u0131i]s[\u0131i]\s*:)\b",
+        re.IGNORECASE,
+    )
+    generic = {
+        "CUMHURBASKANI KARARI",
+        "CUMHURBASKANI KARARI",
+        "YONETMELIK",
+        "YONETMELIK",
+        "TEBLIG",
+        "TEBLIG",
+        "ILAN",
+        "ILAN",
+        "KARAR",
+    }
+
+    for ln in lines[:120]:
+        line = _collapse_ws(ln)
+        if not line or skip_re.search(line):
             continue
-        if ln.startswith("[PAGE"):
+        if _normalize_tr(line).upper() in generic:
             continue
-        if len(ln) >= 6:
-            return ln[:500]
+        if len(line) >= 10:
+            return line[:500]
+    return ""
+
+
+CATEGORY_RULES: list[tuple[str, list[str]]] = [
+    ("Cumhurbaskanligi", ["cumhurbaskanligi kararname", "cumhurbaskanligi genelge", "cumhurbaskanligi karari"]),
+    ("Bankacilik", ["merkez bankasi", "bddk", "bankacilik", "doviz kuru"]),
+    ("SermayePiyasasi", ["sermaye piyasasi kurulu", "spk", "borsa istanbul", "yatirim fonu"]),
+    ("FinansVergi", ["hazine ve maliye", "gelir vergisi", "kurumlar vergisi", "kdv", "muhasebat", "butce", "stopaj"]),
+    ("DisTicaret", ["disisleri bakanligi", "ticaret bakanligi", "ihracat", "ithalat", "gumruk", "lisansli depo"]),
+    ("AkademikIlan", ["universite", "ogretim uyesi", "docent", "profesor", "yuksekogretim", "fakulte"]),
+    ("InsanKaynaklari", ["calisma ve sosyal guvenlik", "sosyal guvenlik kurumu", "is kanunu", "asgari ucret", "personel"]),
+    ("Saglik", ["saglik bakanligi", "ilac", "tibbi cihaz", "eczane", "tabip", "turk gida kodeksi", "gida"]),
+    ("CevreEnerji", ["cevre", "sehircilik", "enerji", "elektrik", "dogalgaz", "epdk", "iklim", "orman", "tarim ve orman"]),
+    ("IhaleIlan", ["artirma", "eksiltme", "ihale", "ihale ilanlari", "belediye baskanligi", "il ozel idaresi"]),
+    ("YargiCeza", ["anayasa mahkemesi", "yargitay", "danistay", "mahkeme", "savcilik", "icra mudurlugu", "yargi ilanlari"]),
+]
+
+
+def _detect_category(title: str, raw_text: str, source_url: str) -> str:
+    text = _normalize_tr(f"{title}\n{raw_text}").lower()
+    source = (source_url or "").lower()
+
+    if "/ilanlar/eskiilanlar/" in source:
+        if "yargi ilan" in text:
+            return "YargiCeza"
+        if "ihale" in text or "artirma" in text or "eksiltme" in text:
+            return "IhaleIlan"
+
+    best_cat = "Diger"
+    best_score = 0.0
+    for cat, keywords in CATEGORY_RULES:
+        score = sum(1 + len(k.split()) * 0.5 for k in keywords if k in text)
+        if score > best_score:
+            best_score = score
+            best_cat = cat
+    return best_cat
+
+
+def _guess_title_from_row(row: dict[str, Any], index: int) -> str:
+    hint = _clean_title_hint(str(row.get("title_hint", "")))
+    if hint:
+        return hint
+
+    extracted = _extract_title_from_raw_text(str(row.get("raw_text", "")))
+    if extracted:
+        return extracted
 
     source_url = _collapse_ws(str(row.get("source_url", "")))
     if source_url:
@@ -171,7 +253,7 @@ def _guess_title_from_row(row: dict[str, Any], index: int) -> str:
 
 
 def _extract_issue_number(rows: list[dict[str, Any]]) -> int | None:
-    issue_re = re.compile(r"Say[ıi]\s*:\s*(\d{5,6})", re.IGNORECASE)
+    issue_re = re.compile(r"Say(?:ı|i)\s*:\s*(\d{5,6})", re.IGNORECASE)
     for row in rows[:5]:
         raw_text = str(row.get("raw_text", ""))
         m = issue_re.search(raw_text)
@@ -188,25 +270,29 @@ def _raw_rows_to_scrape_result(target_date: date, rows: list[dict[str, Any]]) ->
     docs: list[dict[str, Any]] = []
     for i, row in enumerate(rows, start=1):
         source_type = str(row.get("source_type", "")).lower()
-        source_url = str(row.get("source_url", "")).strip()
-        local_file = row.get("local_file")
+        source_url  = str(row.get("source_url", "")).strip()
+        local_file  = row.get("local_file")
+        raw_text    = str(row.get("raw_text", ""))
+        title       = _guess_title_from_row(row, i)
 
-        docs.append(
-            {
-                "index": i,
-                "title": _guess_title_from_row(row, i),
-                "raw_text": str(row.get("raw_text", "")),
-                "html_url": source_url if source_type == "html" else "",
-                "pdf_url": source_url if source_type == "pdf" else "",
-                "local_pdf_path": local_file if source_type == "pdf" else None,
-                "category": "Diger",
-            }
-        )
+        docs.append({
+            "index":         i,
+            "title":         title,
+            "raw_text":      raw_text,
+            "source_type":   source_type,                                    # "html" | "pdf"
+            "html_url":      source_url if source_type == "html" else "",
+            "pdf_url":       source_url if source_type == "pdf"  else "",
+            "local_file_path": local_file,
+            "category":      _detect_category(title, raw_text, source_url),
+            "start_page":    0,   # rg_stage12_pipeline tek belge = 1 PDF dosyası
+            "end_page":      0,   # sayfa bilgisi yok, 0 bırakıyoruz
+            "table_detected": bool(row.get("table_detected", False)),
+        })
 
     return {
-        "issue_number": _extract_issue_number(rows),
+        "issue_number":   _extract_issue_number(rows),
         "published_date": target_date.isoformat(),
-        "documents": docs,
+        "documents":      docs,
     }
 
 
@@ -219,36 +305,6 @@ async def health():
         "version": "0.3.0",
         "backend_reachable": backend_ok,
     }
-
-
-@app.post("/scrape", response_model=ScrapeResponse, summary="Async scrape")
-async def scrape_gazette(req: ScrapeRequest, background: BackgroundTasks):
-    job_id = f"scrape_{req.date.strftime('%Y%m%d')}"
-    _jobs[job_id] = {"status": "running", "date": str(req.date)}
-    background.add_task(_run_scrape, req.date, req.save_to_backend, job_id)
-    return ScrapeResponse(
-        status="started",
-        job_id=job_id,
-        message=f"{req.date} icin scrape baslatildi.",
-    )
-
-
-@app.post("/scrape/today", response_model=ScrapeResponse, summary="Async scrape today")
-async def scrape_today(background: BackgroundTasks, save_to_backend: bool = True):
-    today = date.today()
-    job_id = f"scrape_{today.strftime('%Y%m%d')}"
-    _jobs[job_id] = {"status": "running", "date": str(today)}
-    background.add_task(_run_scrape, today, save_to_backend, job_id)
-    return ScrapeResponse(
-        status="started",
-        job_id=job_id,
-        message=f"Bugun ({today}) icin scrape baslatildi.",
-    )
-
-
-@app.post("/scrape/sync", response_model=ScrapeResponse, summary="Sync scrape")
-async def scrape_sync(req: ScrapeRequest):
-    return await _run_scrape(req.date, req.save_to_backend, job_id=None)
 
 
 @app.get("/scrape/status/{job_id}", summary="Get job status")
@@ -296,53 +352,6 @@ async def scrape_raw_output(target_date: date, limit: int = 20):
     except Exception as exc:
         logger.exception(f"Raw output okuma hatasi: {exc}")
         return JSONResponse(status_code=500, content={"error": str(exc)})
-
-
-async def _run_scrape(target_date: date, save_to_backend: bool, job_id: str | None) -> ScrapeResponse:
-    try:
-        result = await scraper.scrape(target_date)
-
-        if not result:
-            msg = f"{target_date} tarihinde RG bulunamadi."
-            if job_id:
-                _jobs[job_id] = {"status": "failed", "message": msg}
-            return ScrapeResponse(status="failed", message=msg)
-
-        doc_count = len(result.get("documents", []))
-        issue_num = result.get("issue_number")
-        saved = False
-
-        if save_to_backend:
-            saved = await backend_client.ingest_gazette(result)
-            if not saved:
-                logger.warning("Backend kaydi basarisiz.")
-
-        if job_id:
-            _jobs[job_id] = {
-                "status": "completed",
-                "issue_number": issue_num,
-                "document_count": doc_count,
-                "saved_to_backend": saved,
-                "date": str(target_date),
-                "sample_titles": [d["title"][:80] for d in result["documents"][:5]],
-            }
-
-        return ScrapeResponse(
-            status="completed",
-            issue_number=issue_num,
-            document_count=doc_count,
-            saved_to_backend=saved,
-            message=(
-                f"Sayi {issue_num}: {doc_count} belge islendi."
-                + (" (backend'e kaydedildi)" if saved else " (backend'e kaydedilemedi)")
-            ),
-        )
-
-    except Exception as exc:
-        logger.exception(f"Scrape hatasi: {exc}")
-        if job_id:
-            _jobs[job_id] = {"status": "error", "error": str(exc)}
-        return ScrapeResponse(status="error", message=str(exc))
 
 
 async def _run_raw_scrape(req: RawScrapeRequest, job_id: str | None):
@@ -412,3 +421,4 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
+
