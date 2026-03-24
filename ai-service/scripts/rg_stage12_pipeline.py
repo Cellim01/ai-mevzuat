@@ -55,6 +55,47 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+_EMBED_DROP_LINE_PATTERNS = [
+    re.compile(r"^\[\s*PAGE\s+\d+\s*\]$", re.IGNORECASE),
+    re.compile(r"^Resm[iî]\s+Gazete$", re.IGNORECASE),
+    re.compile(r"^Say[ıi]\s*:\s*\d+", re.IGNORECASE),
+    re.compile(r"^\d{1,2}\s+\w+\s+\d{4}\s+\w+", re.IGNORECASE),
+]
+
+
+def build_embedding_text(raw_text: str) -> str:
+    """Build lightweight embedding text while preserving original raw_text."""
+    if not raw_text:
+        return ""
+
+    filtered_lines: list[str] = []
+    for line in raw_text.replace("\r", "\n").split("\n"):
+        s = line.strip()
+        if not s:
+            filtered_lines.append("")
+            continue
+        if s in {"▲", "▼"}:
+            continue
+        if any(p.search(s) for p in _EMBED_DROP_LINE_PATTERNS):
+            continue
+        filtered_lines.append(s)
+
+    # Merge wrapped lines into paragraphs, keep paragraph boundaries.
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in filtered_lines:
+        if not line:
+            if current:
+                paragraphs.append(" ".join(current))
+                current = []
+            continue
+        current.append(line)
+    if current:
+        paragraphs.append(" ".join(current))
+
+    return normalize_text("\n\n".join(paragraphs))
+
+
 def clean_html_text(html_text: str) -> str:
     soup = BeautifulSoup(html_text, "lxml")
     for tag in soup(["script", "style", "nav", "header", "footer", "meta", "link"]):
@@ -225,6 +266,7 @@ def run_pipeline(
         print(f"[2/3] Download + extract for {len(links)} sources")
 
         rows: list[dict] = []
+        embedding_rows: list[dict] = []
         docs_with_table_pages = 0
         table_pages_masked_total = 0
         table_regions_masked_total = 0
@@ -264,6 +306,8 @@ def run_pipeline(
                         f"(pages: {table_pages_masked})"
                     )
 
+            embedding_text = build_embedding_text(raw_text)
+
             rows.append(
                 {
                     "date": target_date.strftime("%Y-%m-%d"),
@@ -279,9 +323,20 @@ def run_pipeline(
                     "raw_text": raw_text,
                 }
             )
+            embedding_rows.append(
+                {
+                    "date": target_date.strftime("%Y-%m-%d"),
+                    "source_type": src.source_type,
+                    "source_url": src.source_url,
+                    "local_file": str(local_path.as_posix()),
+                    "char_count": len(embedding_text),
+                    "embedding_text": embedding_text,
+                }
+            )
 
     print("[3/3] Writing raw outputs")
     write_jsonl(run_root / "documents_raw.jsonl", rows)
+    write_jsonl(run_root / "documents_embedding_text.jsonl", embedding_rows)
     write_json(
         run_root / "summary.json",
         {
@@ -292,10 +347,12 @@ def run_pipeline(
             "table_pages_masked_total": table_pages_masked_total,
             "table_regions_masked_total": table_regions_masked_total,
             "output_jsonl": str((run_root / "documents_raw.jsonl").as_posix()),
+            "output_embedding_jsonl": str((run_root / "documents_embedding_text.jsonl").as_posix()),
             "notes": [
                 "This pipeline intentionally stops before title/category normalization (step 3).",
                 "PDF sources are OCRed directly with high-contrast preprocessing.",
                 "Table-like regions are masked before OCR so non-table content on the same page is preserved.",
+                "Embedding text is stored separately in documents_embedding_text.jsonl.",
             ],
         },
     )

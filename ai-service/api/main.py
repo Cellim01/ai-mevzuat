@@ -115,6 +115,7 @@ def _read_raw_output_bundle(target_date: date, limit: int = 20) -> dict[str, Any
 def _read_raw_rows(target_date: date) -> list[dict[str, Any]]:
     ymd = target_date.strftime("%Y%m%d")
     docs_path = _raw_output_root / ymd / "documents_raw.jsonl"
+    emb_path = _raw_output_root / ymd / "documents_embedding_text.jsonl"
     if not docs_path.exists():
         raise FileNotFoundError(f"Raw rows bulunamadi: {docs_path}")
 
@@ -125,6 +126,34 @@ def _read_raw_rows(target_date: date) -> list[dict[str, Any]]:
             if not line:
                 continue
             rows.append(json.loads(line))
+
+    # Optional sidecar: embedding text is stored in a separate jsonl file.
+    if emb_path.exists():
+        emb_by_key: dict[tuple[str, str], str] = {}
+        emb_by_url: dict[str, str] = {}
+        with emb_path.open("r", encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                e = json.loads(line)
+                source_url = str(e.get("source_url", ""))
+                local_file = str(e.get("local_file", ""))
+                emb_text = str(e.get("embedding_text", ""))
+                if not emb_text:
+                    continue
+                if source_url:
+                    emb_by_url[source_url] = emb_text
+                if source_url and local_file:
+                    emb_by_key[(source_url, local_file)] = emb_text
+
+        for row in rows:
+            source_url = str(row.get("source_url", ""))
+            local_file = str(row.get("local_file", ""))
+            emb_text = emb_by_key.get((source_url, local_file)) or emb_by_url.get(source_url)
+            if emb_text:
+                row["embedding_text"] = emb_text
+
     return rows
 
 
@@ -273,12 +302,14 @@ def _raw_rows_to_scrape_result(target_date: date, rows: list[dict[str, Any]]) ->
         source_url  = str(row.get("source_url", "")).strip()
         local_file  = row.get("local_file")
         raw_text    = str(row.get("raw_text", ""))
+        embedding_text = str(row.get("embedding_text", "")) or raw_text
         title       = _guess_title_from_row(row, i)
 
         docs.append({
             "index":         i,
             "title":         title,
             "raw_text":      raw_text,
+            "embedding_text": embedding_text,
             "source_type":   source_type,                                    # "html" | "pdf"
             "html_url":      source_url if source_type == "html" else "",
             "pdf_url":       source_url if source_type == "pdf"  else "",
@@ -421,4 +452,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)
-

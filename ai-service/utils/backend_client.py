@@ -29,6 +29,7 @@ class BackendClient:
                     "Index":         d.get("index"),
                     "Title":         d.get("title", ""),
                     "RawText":       d.get("raw_text", ""),
+                    "EmbeddingText": d.get("embedding_text", ""),
                     "HtmlUrl":       d.get("html_url", "") or "",
                     "PdfUrl":        d.get("pdf_url", "") or "",
                     "LocalFilePath": d.get("local_file_path"),
