@@ -63,9 +63,94 @@ _EMBED_DROP_LINE_PATTERNS = [
 ]
 
 
-def build_embedding_text(raw_text: str) -> str:
+def _collapse_ws(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _normalize_tr(text: str) -> str:
+    tr_map = str.maketrans(
+        {
+            "\u00e7": "c",
+            "\u00c7": "c",
+            "\u011f": "g",
+            "\u011e": "g",
+            "\u0131": "i",
+            "\u0130": "i",
+            "\u00f6": "o",
+            "\u00d6": "o",
+            "\u015f": "s",
+            "\u015e": "s",
+            "\u00fc": "u",
+            "\u00dc": "u",
+            "\u00e2": "a",
+            "\u00c2": "a",
+            "\u00ee": "i",
+            "\u00ce": "i",
+            "\u00fb": "u",
+            "\u00db": "u",
+        }
+    )
+    return (text or "").translate(tr_map)
+
+
+def _clean_title_hint(title: str) -> str:
+    t = _collapse_ws((title or "").replace("\n", " "))
+    t = re.sub(r"^[\u2013\u2014-]+\s*", "", t)
+    t = re.sub(r"^[a-zA-Z]\s*-\s*", "", t)
+    t = _collapse_ws(t)
+    if len(t) < 4:
+        return ""
+    return t[:500]
+
+
+def _extract_title_from_raw_text(raw_text: str) -> str:
+    lines = [ln.strip() for ln in (raw_text or "").splitlines() if ln.strip()]
+    skip_re = re.compile(
+        r"^(?:\[\s*PAGE\s+\d+\s*\]|"
+        r"\d{1,2}\s+\w+\s+\d{4}\s+\w+|"
+        r"Resm[i\u00ee]\s+Gazete|"
+        r"Say[\u0131i]\s*:|"
+        r"Karar\s+Say[\u0131i]s[\u0131i]\s*:)\b",
+        re.IGNORECASE,
+    )
+    generic = {
+        "CUMHURBASKANI KARARI",
+        "YONETMELIK",
+        "TEBLIG",
+        "ILAN",
+        "KARAR",
+    }
+    for ln in lines[:120]:
+        line = _collapse_ws(ln)
+        if not line or skip_re.search(line):
+            continue
+        if _normalize_tr(line).upper() in generic:
+            continue
+        if len(line) >= 10:
+            return line[:500]
+    return ""
+
+
+def _title_from_url(source_url: str) -> str:
+    stem = Path(urlparse(source_url).path).stem or "Belge"
+    stem = stem.replace("_", " ").replace("-", " ")
+    stem = _collapse_ws(stem)
+    return stem[:500] if stem else "Belge"
+
+
+def resolve_embedding_title(title_hint: str, raw_text: str, source_url: str) -> str:
+    hint = _clean_title_hint(title_hint)
+    if hint:
+        return hint
+    extracted = _extract_title_from_raw_text(raw_text)
+    if extracted:
+        return extracted
+    return _title_from_url(source_url)
+
+
+def build_embedding_text(raw_text: str, title: str = "") -> str:
     """Build lightweight embedding text while preserving original raw_text."""
-    if not raw_text:
+    if not raw_text and not title:
         return ""
 
     filtered_lines: list[str] = []
@@ -93,7 +178,13 @@ def build_embedding_text(raw_text: str) -> str:
     if current:
         paragraphs.append(" ".join(current))
 
-    return normalize_text("\n\n".join(paragraphs))
+    body = normalize_text("\n\n".join(paragraphs))
+    clean_title = _clean_title_hint(title)
+    if not clean_title:
+        return body
+    if not body:
+        return f"BASLIK: {clean_title}"
+    return normalize_text(f"BASLIK: {clean_title}\n\n{body}")
 
 
 def clean_html_text(html_text: str) -> str:
@@ -306,12 +397,14 @@ def run_pipeline(
                         f"(pages: {table_pages_masked})"
                     )
 
-            embedding_text = build_embedding_text(raw_text)
+            resolved_title = resolve_embedding_title(src.title_hint, raw_text, src.source_url)
+            embedding_text = build_embedding_text(raw_text, title=resolved_title)
 
             rows.append(
                 {
                     "date": target_date.strftime("%Y-%m-%d"),
                     "title_hint": src.title_hint,
+                    "resolved_title": resolved_title,
                     "source_type": src.source_type,
                     "source_url": src.source_url,
                     "local_file": str(local_path.as_posix()),
@@ -326,6 +419,8 @@ def run_pipeline(
             embedding_rows.append(
                 {
                     "date": target_date.strftime("%Y-%m-%d"),
+                    "title_hint": src.title_hint,
+                    "resolved_title": resolved_title,
                     "source_type": src.source_type,
                     "source_url": src.source_url,
                     "local_file": str(local_path.as_posix()),
