@@ -24,6 +24,22 @@ public interface IPasswordService
 
 public interface IAiServiceClient
 {
-    Task<string?> GetDocumentSummaryAsync(string text, CancellationToken ct = default);
     Task TriggerScrapeAsync(DateOnly date, CancellationToken ct = default);
+}
+
+public record ExternalLawResult(
+    string Source,
+    string ExternalId,
+    string Title,
+    string Content,
+    string? SourceUrl = null,
+    string? MetadataJson = null
+);
+
+public interface IExternalLawClient
+{
+    Task<IReadOnlyList<ExternalLawResult>> QueryAsync(
+        string query,
+        int maxResults = 5,
+        CancellationToken ct = default);
 }

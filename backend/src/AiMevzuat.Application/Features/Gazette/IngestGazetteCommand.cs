@@ -2,6 +2,7 @@ using AiMevzuat.Application.DTOs;
 using AiMevzuat.Domain.Entities;
 using AiMevzuat.Domain.Enums;
 using MediatR;
+using System.Text.RegularExpressions;
 
 namespace AiMevzuat.Application.Features.Gazette;
 
@@ -10,6 +11,14 @@ public record IngestGazetteCommand(IngestGazetteRequest Request) : IRequest<Inge
 public class IngestGazetteCommandHandler
     : IRequestHandler<IngestGazetteCommand, IngestGazetteResponse>
 {
+    private static readonly Regex PageMarkerRegex = new(
+        @"\[PAGE\s+\d+\]",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex MultiWhitespaceRegex = new(
+        @"\s+",
+        RegexOptions.Compiled);
+
     private readonly IGazetteIssueRepository _issueRepo;
     private readonly IGazetteRepository      _docRepo;
 
@@ -79,6 +88,7 @@ public class IngestGazetteCommandHandler
             {
                 Title          = dto.Title.Trim(),
                 RawText        = dto.RawText,
+                SearchText     = BuildSearchText(dto),
                 StartPage      = dto.StartPage,
                 EndPage        = dto.EndPage,
                 Category       = category,
@@ -106,5 +116,37 @@ public class IngestGazetteCommandHandler
         return new IngestGazetteResponse(
             issue.Id, saved, skipped,
             $"Sayı {issue.IssueNumber} kaydedildi: {saved} belge eklendi, {skipped} atlandı.");
+    }
+
+    private static string BuildSearchText(IngestDocumentDto dto)
+    {
+        var mainText = !string.IsNullOrWhiteSpace(dto.EmbeddingText)
+            ? dto.EmbeddingText!
+            : dto.RawText;
+
+        var normalizedTitle = NormalizeForSearch(dto.Title);
+        var normalizedBody = NormalizeForSearch(mainText);
+
+        if (string.IsNullOrWhiteSpace(normalizedBody))
+            normalizedBody = NormalizeForSearch(dto.RawText);
+
+        if (string.IsNullOrWhiteSpace(normalizedBody))
+            normalizedBody = dto.RawText.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedTitle))
+            return normalizedBody;
+
+        return $"{normalizedTitle}\n\n{normalizedBody}";
+    }
+
+    private static string NormalizeForSearch(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var text = value.Replace('\0', ' ');
+        text = PageMarkerRegex.Replace(text, " ");
+        text = MultiWhitespaceRegex.Replace(text, " ");
+        return text.Trim();
     }
 }

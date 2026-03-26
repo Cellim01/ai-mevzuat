@@ -1,4 +1,5 @@
 using AiMevzuat.Application.Features.Gazette;
+using AiMevzuat.Application.Features.Legal;
 using AiMevzuat.Domain.Entities;
 using AiMevzuat.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -55,7 +56,9 @@ public class GazetteRepository : Repository<GazetteDocument>, IGazetteRepository
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(d =>
                 d.Title.Contains(search) ||
-                (d.Summary != null && d.Summary.Contains(search)));
+                (d.Summary != null && d.Summary.Contains(search)) ||
+                d.SearchText.Contains(search) ||
+                d.RawText.Contains(search));
 
         var total = await query.CountAsync(ct);
         var items = await query
@@ -106,5 +109,55 @@ public class GazetteIssueRepository : Repository<GazetteIssue>, IGazetteIssueRep
             .ToListAsync(ct);
 
         return (items, total);
+    }
+}
+
+public class ExternalLawCacheRepository : IExternalLawCacheRepository
+{
+    private readonly AppDbContext _db;
+
+    public ExternalLawCacheRepository(AppDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<ExternalLawCache?> GetValidAsync(
+        string source,
+        string queryHash,
+        CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        return await _db.ExternalLawCaches
+            .FirstOrDefaultAsync(
+                x => x.Source == source && x.QueryHash == queryHash && x.ExpiresAt > now,
+                ct);
+    }
+
+    public async Task UpsertAsync(ExternalLawCache entry, CancellationToken ct = default)
+    {
+        var existing = await _db.ExternalLawCaches
+            .FirstOrDefaultAsync(
+                x => x.Source == entry.Source && x.QueryHash == entry.QueryHash,
+                ct);
+
+        if (existing is null)
+        {
+            await _db.ExternalLawCaches.AddAsync(entry, ct);
+        }
+        else
+        {
+            existing.QueryText = entry.QueryText;
+            existing.ExternalId = entry.ExternalId;
+            existing.Title = entry.Title;
+            existing.Content = entry.Content;
+            existing.SourceUrl = entry.SourceUrl;
+            existing.MetadataJson = entry.MetadataJson;
+            existing.FetchedAt = entry.FetchedAt;
+            existing.ExpiresAt = entry.ExpiresAt;
+            existing.HitCount = entry.HitCount;
+            existing.UpdatedAt = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync(ct);
     }
 }

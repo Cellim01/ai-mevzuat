@@ -11,6 +11,7 @@ public class GazetteDocument : BaseEntity
     public string Title      { get; set; } = string.Empty;
     public string? Summary   { get; set; }           // AI tarafından üretilen özet
     public string RawText    { get; set; } = string.Empty;
+    public string SearchText { get; set; } = string.Empty;
 
     public int StartPage     { get; set; }
     public int EndPage       { get; set; }

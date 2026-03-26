@@ -32,6 +32,7 @@ public class GazetteDocumentConfiguration : IEntityTypeConfiguration<GazetteDocu
         b.Property(x => x.Title).IsRequired().HasMaxLength(1000);
         b.Property(x => x.Summary).HasMaxLength(4000);
         b.Property(x => x.RawText).IsRequired();
+        b.Property(x => x.SearchText).IsRequired();
         b.Property(x => x.HtmlUrl).HasMaxLength(1024);
         b.Property(x => x.PdfUrl).HasMaxLength(1024);
         b.Property(x => x.LocalFilePath).HasMaxLength(512);
@@ -102,5 +103,24 @@ public class UserKeywordConfiguration : IEntityTypeConfiguration<UserKeyword>
          .WithMany(x => x.Keywords)
          .HasForeignKey(x => x.UserId)
          .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ExternalLawCacheConfiguration : IEntityTypeConfiguration<ExternalLawCache>
+{
+    public void Configure(EntityTypeBuilder<ExternalLawCache> b)
+    {
+        b.HasKey(x => x.Id);
+
+        b.Property(x => x.Source).IsRequired().HasMaxLength(64);
+        b.Property(x => x.QueryHash).IsRequired().HasMaxLength(128);
+        b.Property(x => x.QueryText).IsRequired().HasMaxLength(2000);
+        b.Property(x => x.ExternalId).IsRequired().HasMaxLength(256);
+        b.Property(x => x.Title).IsRequired().HasMaxLength(1000);
+        b.Property(x => x.Content).IsRequired();
+        b.Property(x => x.SourceUrl).HasMaxLength(1024);
+
+        b.HasIndex(x => new { x.Source, x.QueryHash }).IsUnique();
+        b.HasIndex(x => x.ExpiresAt);
     }
 }

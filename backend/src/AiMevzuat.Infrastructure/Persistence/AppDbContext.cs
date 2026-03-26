@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<GazetteIssue> GazetteIssues => Set<GazetteIssue>();
     public DbSet<GazetteDocument> GazetteDocuments => Set<GazetteDocument>();
     public DbSet<DocumentChange> DocumentChanges => Set<DocumentChange>();
+    public DbSet<ExternalLawCache> ExternalLawCaches => Set<ExternalLawCache>();
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
     public DbSet<UserKeyword> UserKeywords => Set<UserKeyword>();
 

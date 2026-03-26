@@ -14,6 +14,7 @@ public record IngestDocumentDto(
     int    Index,
     string Title,
     string RawText,
+    string? EmbeddingText,
 
     // Kaynak
     string? HtmlUrl,

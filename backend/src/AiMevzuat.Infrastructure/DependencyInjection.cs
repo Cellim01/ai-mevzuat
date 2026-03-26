@@ -1,11 +1,13 @@
 using AiMevzuat.Application.Common.Interfaces;
 using AiMevzuat.Application.Features.Gazette;
+using AiMevzuat.Application.Features.Legal;
 using AiMevzuat.Domain.Common;
 using AiMevzuat.Domain.Entities;
 using AiMevzuat.Infrastructure.Identity;
 using AiMevzuat.Infrastructure.Persistence;
 using AiMevzuat.Infrastructure.Persistence.Repositories;
 using AiMevzuat.Infrastructure.Services;
+using AiMevzuat.Infrastructure.Services.Mevzuat;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IGazetteRepository, GazetteRepository>();
         services.AddScoped<IGazetteIssueRepository, GazetteIssueRepository>();
+        services.AddScoped<IExternalLawCacheRepository, ExternalLawCacheRepository>();
 
         // Identity services
         services.AddScoped<IJwtService, JwtService>();
@@ -40,6 +43,7 @@ public static class DependencyInjection
 
         // AI Service client
         services.AddHttpClient<IAiServiceClient, AiServiceClient>();
+        services.AddHttpClient<IExternalLawClient, MevzuatMcpClient>();
 
         return services;
     }
