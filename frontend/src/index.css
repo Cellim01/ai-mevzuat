@@ -295,3 +295,39 @@
 .reveal-delay-3 { transition-delay: 0.3s; }
 .reveal-delay-4 { transition-delay: 0.4s; }
 
+
+/* ── Panel Page Utilities ─────────────────────────────────── */
+.panel-doc-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.008) 100%);
+  border: 1px solid rgba(212,160,23,0.08);
+  border-radius: 14px;
+  transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
+}
+.panel-doc-card:hover {
+  border-color: rgba(212,160,23,0.25);
+  background: linear-gradient(135deg, rgba(212,160,23,0.04) 0%, rgba(255,255,255,0.012) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(212,160,23,0.06);
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(212,160,23,0.08);
+  border: 1px solid rgba(212,160,23,0.2);
+  border-radius: 99px;
+  font-size: 10px;
+  color: #d4a017;
+  font-family: "JetBrains Mono", monospace;
+}
+.filter-chip button {
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.filter-chip button:hover { opacity: 1; }
+.custom-scrollbar::-webkit-scrollbar { width: 3px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(212,160,23,0.2); border-radius: 2px; }

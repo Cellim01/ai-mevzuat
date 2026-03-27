@@ -160,4 +160,20 @@ public class ExternalLawCacheRepository : IExternalLawCacheRepository
 
         await _db.SaveChangesAsync(ct);
     }
+
+    public async Task<int> ClearAsync(string? queryText = null, CancellationToken ct = default)
+    {
+        var query = _db.ExternalLawCaches.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(queryText))
+            query = query.Where(x => x.QueryText == queryText);
+
+        var items = await query.ToListAsync(ct);
+        if (items.Count == 0)
+            return 0;
+
+        _db.ExternalLawCaches.RemoveRange(items);
+        await _db.SaveChangesAsync(ct);
+        return items.Count;
+    }
 }

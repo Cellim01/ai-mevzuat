@@ -1,55 +1,25 @@
-﻿/**
- * API Service - Frontend -> Backend/AI Service
- *
- * Notes:
- * - Backend base URL comes from VITE_API_URL.
- * - If VITE_API_URL is not set, relative paths are used.
- * - Register payload sends `fullName` (backend contract).
- */
+const rawBase = import.meta.env.VITE_API_URL?.trim();
+const BASE = rawBase ? rawBase.replace(/\/+$/, "") : "";
 
-const rawBackendUrl = import.meta.env.VITE_API_URL?.trim();
-const rawAiUrl = import.meta.env.VITE_AI_URL?.trim();
-
-const BASE_URL = rawBackendUrl ? rawBackendUrl.replace(/\/+$/, "") : "";
-const AI_URL = (rawAiUrl || "http://localhost:8000").replace(/\/+$/, "");
-
-function buildBackendUrl(path) {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return BASE_URL ? `${BASE_URL}${normalizedPath}` : normalizedPath;
+function url(path) {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return BASE ? `${BASE}${p}` : p;
 }
 
-function buildAiUrl(path) {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  return `${AI_URL}${normalizedPath}`;
-}
+function getToken() { return localStorage.getItem("access_token"); }
 
-function getToken() {
-  return localStorage.getItem("access_token");
-}
-
-function decodeTokenPayload(token) {
+function decodePayload(token) {
   try {
-    const payloadPart = token?.split(".")?.[1];
-    if (!payloadPart) return null;
-
-    const base64 = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
-    const normalized = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-    return JSON.parse(atob(normalized));
-  } catch {
-    return null;
-  }
+    const p = token?.split(".")?.[1];
+    if (!p) return null;
+    const b = p.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(b + "=".repeat((4 - b.length % 4) % 4)));
+  } catch { return null; }
 }
 
-function isAccessTokenValid(token) {
-  if (!token) return false;
-
-  const payload = decodeTokenPayload(token);
-  if (!payload || typeof payload.exp !== "number") {
-    return false;
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  return payload.exp > now + 5;
+function tokenOk(token) {
+  const p = decodePayload(token);
+  return !!(p?.exp > Math.floor(Date.now() / 1000) + 5);
 }
 
 function clearTokens() {
@@ -57,200 +27,119 @@ function clearTokens() {
   localStorage.removeItem("refresh_token");
 }
 
-function persistTokens(data) {
-  const accessToken = data?.accessToken ?? data?.AccessToken;
-  const refreshToken = data?.refreshToken ?? data?.RefreshToken;
-
-  if (accessToken) {
-    localStorage.setItem("access_token", accessToken);
-  }
-  if (refreshToken) {
-    localStorage.setItem("refresh_token", refreshToken);
-  }
-
-  return { accessToken, refreshToken };
+function persist(data) {
+  const at = data?.accessToken ?? data?.AccessToken;
+  const rt = data?.refreshToken ?? data?.RefreshToken;
+  if (at) localStorage.setItem("access_token", at);
+  if (rt) localStorage.setItem("refresh_token", rt);
+  return { accessToken: at };
 }
 
 async function safeJson(res) {
-  const text = await res.text();
-  if (!text) return {};
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
-  }
+  const t = await res.text();
+  if (!t) return {};
+  try { return JSON.parse(t); } catch { return { message: t }; }
 }
 
-async function request(url, options = {}) {
-  const { skipAuthRefresh = false, ...fetchOptions } = options;
-
+async function request(url, opts = {}) {
+  const { skipAuthRefresh = false, ...rest } = opts;
   const token = getToken();
   const headers = {
     "Content-Type": "application/json",
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...fetchOptions.headers,
+    ...rest.headers,
   };
-
   let res;
-  try {
-    res = await fetch(url, { ...fetchOptions, headers });
-  } catch {
-    throw new Error("Sunucuya baglanilamadi. Backend adresi ve portunu kontrol edin.");
-  }
+  try { res = await fetch(url, { ...rest, headers }); }
+  catch { throw new Error("Sunucuya bağlanılamadı."); }
 
   if (res.status === 401 && !skipAuthRefresh) {
-    const refreshed = await authApi.refresh();
-
-    if (refreshed) {
-      const retryHeaders = {
-        ...headers,
-        Authorization: `Bearer ${getToken()}`,
-      };
-
-      try {
-        return await fetch(url, { ...fetchOptions, headers: retryHeaders });
-      } catch {
-        throw new Error("Sunucuya baglanilamadi. Backend adresi ve portunu kontrol edin.");
-      }
+    const ok = await authApi.refresh();
+    if (ok) {
+      try { return await fetch(url, { ...rest, headers: { ...headers, Authorization: `Bearer ${getToken()}` } }); }
+      catch { throw new Error("Sunucuya bağlanılamadı."); }
     }
-
     clearTokens();
-    if (typeof window !== "undefined") {
-      window.location.href = "/giris";
-    }
-    throw new Error("Oturum suresi doldu.");
+    window.location.href = "/giris";
+    throw new Error("Oturum süresi doldu.");
   }
-
   return res;
 }
 
-async function json(url, options = {}) {
-  const res = await request(url, options);
+async function json(endpoint, opts = {}) {
+  const res = await request(endpoint, opts);
   const body = await safeJson(res);
-
-  if (!res.ok) {
-    throw new Error(body.message || body.title || `HTTP ${res.status}`);
-  }
-
+  if (!res.ok) throw new Error(body.message || body.title || `HTTP ${res.status}`);
   return body;
 }
 
 export const authApi = {
   async login(email, password) {
-    const data = await json(buildBackendUrl("/api/auth/login"), {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-
-    persistTokens(data);
+    const data = await json(url("/api/auth/login"), { method: "POST", body: JSON.stringify({ email, password }) });
+    persist(data);
     return data;
   },
-
   async register(fullName, email, password) {
-    return json(buildBackendUrl("/api/auth/register"), {
-      method: "POST",
-      body: JSON.stringify({ fullName, email, password }),
-    });
+    return json(url("/api/auth/register"), { method: "POST", body: JSON.stringify({ fullName, email, password }) });
   },
-
   async refresh() {
     try {
-      const refreshToken = localStorage.getItem("refresh_token");
-      if (!refreshToken) return false;
-
-      const res = await request(buildBackendUrl("/api/auth/refresh"), {
-        method: "POST",
-        skipAuthRefresh: true,
-        body: JSON.stringify({ refreshToken }),
-      });
-
+      const rt = localStorage.getItem("refresh_token");
+      if (!rt) return false;
+      const res = await request(url("/api/auth/refresh"), { method: "POST", skipAuthRefresh: true, body: JSON.stringify({ refreshToken: rt }) });
       if (!res.ok) return false;
-
-      const data = await safeJson(res);
-      const { accessToken } = persistTokens(data);
-      return !!accessToken;
-    } catch {
-      return false;
-    }
+      return !!persist(await safeJson(res)).accessToken;
+    } catch { return false; }
   },
-
-  logout() {
-    clearTokens();
-  },
-
+  logout() { clearTokens(); },
   isLoggedIn() {
-    const token = getToken();
-    const valid = isAccessTokenValid(token);
-
-    if (!valid && token) {
-      clearTokens();
-    }
-
-    return valid;
+    const t = getToken();
+    if (t && !tokenOk(t)) { clearTokens(); return false; }
+    return tokenOk(t);
   },
 };
 
 export const gazetteApi = {
-  async getIssues({ page = 1, pageSize = 20, category = "" } = {}) {
-    const params = new URLSearchParams({ page, pageSize });
-    if (category) params.set("category", category);
-    return json(buildBackendUrl(`/api/gazette/issues?${params}`));
+  async getDocuments({ page = 1, pageSize = 15, category = "", from = "", to = "", search = "" } = {}) {
+    const p = new URLSearchParams({ page, pageSize });
+    if (category) p.set("category", category);
+    if (from) p.set("from", from);
+    if (to) p.set("to", to);
+    if (search) p.set("search", search);
+    return json(url(`/api/gazette?${p}`));
   },
-
-  async getIssue(id) {
-    return json(buildBackendUrl(`/api/gazette/issues/${id}`));
+  async getDocument(id) { return json(url(`/api/gazette/${id}`)); },
+  async getIssues({ page = 1, pageSize = 20 } = {}) {
+    return json(url(`/api/gazette/issues?page=${page}&pageSize=${pageSize}`));
   },
+};
 
-  async search(query, { page = 1, pageSize = 20 } = {}) {
-    const params = new URLSearchParams({ q: query, page, pageSize });
-    return json(buildBackendUrl(`/api/gazette/search?${params}`));
+export const legalApi = {
+  async query(query, maxResults = 5) {
+    return json(url("/api/legal/query"), { method: "POST", body: JSON.stringify({ query, maxResults }) });
   },
 };
 
 export const adminApi = {
-  async aiHealth() {
-    const res = await fetch(buildAiUrl("/health"));
-    return res.json();
-  },
-
-  async backendHealth() {
-    const res = await fetch(buildBackendUrl("/health"));
-    return res.json();
-  },
-
-  async jobStatus(jobId) {
-    const res = await fetch(buildAiUrl(`/scrape/status/${jobId}`));
-    return res.json();
-  },
-
-  async listJobs() {
-    const res = await fetch(buildAiUrl("/scrape/jobs"));
-    return res.json();
-  },
-
-  async scrapeRaw(date, options = {}) {
-    const payload = {
-      date,
-      max_docs: options.maxDocs ?? 0,
-      include_main_pdf: options.includeMainPdf ?? false,
-      keep_debug_images: options.keepDebugImages ?? false,
-      allow_table_pages: options.allowTablePages ?? false,
-      save_to_backend: options.saveToBackend ?? true,
-      only_urls: options.onlyUrls ?? null,
-      preview_limit: options.previewLimit ?? 20,
-    };
-
-    const res = await fetch(buildAiUrl("/scrape/raw"), {
+  async backendHealth() { const r = await fetch(url("/health")); return r.json(); },
+  async aiHealth() { return json(url("/api/admin/ai/health")); },
+  async listJobs() { return json(url("/api/admin/jobs")); },
+  async jobStatus(id) { return json(url(`/api/admin/jobs/${id}`)); },
+  async scrapeRaw(date, o = {}) {
+    return json(url("/api/admin/scrape/raw"), {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        date, maxDocs: o.maxDocs ?? 0, includeMainPdf: o.includeMainPdf ?? false,
+        keepDebugImages: o.keepDebugImages ?? false, allowTablePages: o.allowTablePages ?? false,
+        saveToBackend: o.saveToBackend ?? true, onlyUrls: o.onlyUrls ?? null, previewLimit: o.previewLimit ?? 20,
+      }),
     });
-    return res.json();
   },
-
-  async getRawOutput(date, limit = 20) {
-    const res = await fetch(buildAiUrl(`/scrape/raw/output/${date}?limit=${limit}`));
-    return res.json();
+  async getRawOutput(date, limit = 20) { return json(url(`/api/admin/scrape/raw/output/${date}?limit=${limit}`)); },
+  async clearLegalCache(q = "") {
+    return json(url(`/api/admin/legal/cache${q ? `?query=${encodeURIComponent(q)}` : ""}`), { method: "DELETE" });
+  },
+  async legalQuery(query, maxResults = 5) {
+    return json(url("/api/legal/query"), { method: "POST", body: JSON.stringify({ query, maxResults }) });
   },
 };

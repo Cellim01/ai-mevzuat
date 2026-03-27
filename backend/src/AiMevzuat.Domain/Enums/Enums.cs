@@ -29,14 +29,6 @@ public enum DocumentCategory
     CesitliIlan      = 16
 }
 
-public enum ProcessStatus
-{
-    Pending    = 0,
-    Processing = 1,
-    Completed  = 2,
-    Failed     = 3
-}
-
 public enum SourceType
 {
     Html = 0,

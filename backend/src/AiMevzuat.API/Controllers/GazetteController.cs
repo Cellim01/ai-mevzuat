@@ -46,6 +46,19 @@ public class GazetteController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("search")]
+    public async Task<ActionResult<PagedResult<GazetteDocumentDto>>> Search(
+        [FromQuery(Name = "q")] string query,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
+    {
+        var result = await _mediator.Send(
+            new GetGazettesQuery(page, pageSize, null, null, null, query),
+            ct);
+        return Ok(result);
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<GazetteDocumentDto>> GetById(Guid id, CancellationToken ct)
     {
@@ -53,6 +66,10 @@ public class GazetteController : ControllerBase
         if (result is null) return NotFound();
         return Ok(result);
     }
+
+    [HttpGet("issues/{id:guid}")]
+    public async Task<ActionResult<GazetteDocumentDto>> GetByIssueScopedId(Guid id, CancellationToken ct)
+        => await GetById(id, ct);
 
     [HttpPost("scrape")]
     [Authorize(Roles = "Admin")]

@@ -1,16 +1,16 @@
 """
-Başlatmak için:
-  cd ai-service
-  python run.py
+AI-SERVICE-HARITA: run.py
+- Gelistirme ortaminda ai-service uygulamasini baslatir.
+- Uvicorn ile api.main:app hedefini calistirir.
 """
-import sys
-import os
 
-# ai-service/ klasörünü Python path'e ekle
-sys.path.insert(0, os.path.dirname(__file__))
+import os
+import sys
 
 import uvicorn
 
+
 if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(__file__))
     os.makedirs("logs", exist_ok=True)
     uvicorn.run("api.main:app", host="0.0.0.0", port=8000, reload=True)

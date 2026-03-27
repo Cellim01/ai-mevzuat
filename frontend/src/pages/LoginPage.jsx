@@ -17,7 +17,7 @@ export default function LoginPage() {
     try {
       const result = await login(form.email, form.password);
       const role = result?.user?.role || "Free";
-      navigate(role === "Admin" ? "/admin" : "/");
+      navigate(role === "Admin" ? "/admin" : "/panel");
     } catch (err) {
       setError(err.message || "Giris basarisiz.");
     } finally {

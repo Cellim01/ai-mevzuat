@@ -18,7 +18,10 @@ public class JwtService : IJwtService
 
     public JwtService(IConfiguration config)
     {
-        _secret   = config["Jwt:Secret"]   ?? throw new InvalidOperationException("Jwt:Secret eksik");
+        _secret   = (config["Jwt:Secret"] ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(_secret))
+            throw new InvalidOperationException("Jwt:Secret bos olamaz.");
+
         _issuer   = config["Jwt:Issuer"]   ?? "ai-mevzuat";
         _audience = config["Jwt:Audience"] ?? "ai-mevzuat-client";
         _expiryMinutes = int.Parse(config["Jwt:ExpiryMinutes"] ?? "60");

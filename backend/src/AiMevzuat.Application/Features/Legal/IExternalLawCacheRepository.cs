@@ -10,4 +10,5 @@ public interface IExternalLawCacheRepository
         CancellationToken ct = default);
 
     Task UpsertAsync(ExternalLawCache entry, CancellationToken ct = default);
+    Task<int> ClearAsync(string? queryText = null, CancellationToken ct = default);
 }

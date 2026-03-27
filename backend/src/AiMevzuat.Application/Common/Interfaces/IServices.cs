@@ -25,7 +25,22 @@ public interface IPasswordService
 public interface IAiServiceClient
 {
     Task TriggerScrapeAsync(DateOnly date, CancellationToken ct = default);
+    Task<string?> GetHealthAsync(CancellationToken ct = default);
+    Task<string?> ListJobsAsync(CancellationToken ct = default);
+    Task<string?> GetJobStatusAsync(string jobId, CancellationToken ct = default);
+    Task<string?> ScrapeRawAsync(DateOnly date, RawScrapeOptions? options = null, CancellationToken ct = default);
+    Task<string?> GetRawOutputAsync(DateOnly date, int limit = 20, CancellationToken ct = default);
 }
+
+public record RawScrapeOptions(
+    int MaxDocs = 0,
+    bool IncludeMainPdf = false,
+    bool KeepDebugImages = false,
+    bool AllowTablePages = false,
+    bool SaveToBackend = true,
+    List<string>? OnlyUrls = null,
+    int PreviewLimit = 20
+);
 
 public record ExternalLawResult(
     string Source,

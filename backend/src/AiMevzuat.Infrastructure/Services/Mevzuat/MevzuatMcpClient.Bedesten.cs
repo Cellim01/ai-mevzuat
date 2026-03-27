@@ -1,4 +1,5 @@
 using AiMevzuat.Application.Common.Interfaces;
+using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Text.Json;
 

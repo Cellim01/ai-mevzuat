@@ -78,7 +78,8 @@ public class IngestGazetteCommandHandler
                 continue;
             }
 
-            if (!Enum.TryParse<DocumentCategory>(dto.Category, ignoreCase: true, out var category))
+            var normalizedCategory = NormalizeCategory(dto.Category);
+            if (!Enum.TryParse<DocumentCategory>(normalizedCategory, ignoreCase: true, out var category))
                 category = DocumentCategory.Diger;
 
             if (!Enum.TryParse<SourceType>(dto.SourceType, ignoreCase: true, out var sourceType))
@@ -148,5 +149,19 @@ public class IngestGazetteCommandHandler
         text = PageMarkerRegex.Replace(text, " ");
         text = MultiWhitespaceRegex.Replace(text, " ");
         return text.Trim();
+    }
+
+    private static string NormalizeCategory(string? category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return string.Empty;
+
+        var trimmed = category.Trim();
+
+        // Legacy ai-service kategorisi. Enum'da yoksa Diger'e dusuyordu.
+        if (trimmed.Equals("YargiCeza", StringComparison.OrdinalIgnoreCase))
+            return "YargiKarari";
+
+        return trimmed;
     }
 }

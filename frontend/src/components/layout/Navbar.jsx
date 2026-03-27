@@ -60,6 +60,9 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-6">
           {isLoggedIn ? (
             <>
+              <Link to="/panel" className="nav-link">
+                Panel
+              </Link>
               {isAdmin && (
                 <Link to="/admin" className="nav-link">
                   Admin

@@ -44,7 +44,13 @@ function mapAuthResponseToUser(data, fallbackPayload) {
     return {
       email: user.email || user.Email || fallbackPayload?.email || "",
       name: user.fullName || user.FullName || fallbackPayload?.name || "",
-      role: normalizeRole(user.role || user.Role || fallbackPayload?.role),
+      role: normalizeRole(
+        user.role ||
+        user.Role ||
+        fallbackPayload?.role ||
+        fallbackPayload?.[ROLE_CLAIM_URI] ||
+        fallbackPayload?.Role
+      ),
     };
   }
 

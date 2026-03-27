@@ -22,6 +22,7 @@ pip-delete-this-directory.txt
 *.log
 ai-service/downloads/
 ai-service/logs/
+ai-service/output/jobs_state.json
 
 # ===========================
 # .NET / C# (backend)
@@ -101,3 +102,6 @@ desktop.ini
 # ===========================
 *.zip
 tmp/
+*.binlog
+build-diag*.txt
+restore-diag*.txt
