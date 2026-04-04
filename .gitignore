@@ -23,6 +23,8 @@ pip-delete-this-directory.txt
 ai-service/downloads/
 ai-service/logs/
 ai-service/output/jobs_state.json
+milvus_ai_mevzuat/
+
 
 # ===========================
 # .NET / C# (backend)
