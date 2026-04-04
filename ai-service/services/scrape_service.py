@@ -15,10 +15,11 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from api.schemas.scrape import RawScrapeRequest
-from scripts.ocr_utils import OcrConfig
+from scripts.ocr_utils import OcrConfig, ensure_tesseract
 from scripts.rg_stage12_pipeline import run_pipeline
 from services.transform_service import raw_rows_to_scrape_result
 from utils.backend_client import BackendClient
+from utils.config import settings
 from utils.job_store import JobStore
 from utils.raw_reader import read_raw_output_bundle, read_raw_rows
 
@@ -72,6 +73,9 @@ class ScrapeService:
 
     async def run_raw_scrape(self, req: RawScrapeRequest, job_id: str | None):
         try:
+            tesseract_path = ensure_tesseract()
+            logger.info(f"Tesseract bulundu: {tesseract_path}")
+
             await asyncio.to_thread(
                 run_pipeline,
                 target_date=datetime.strptime(req.date.isoformat(), "%Y-%m-%d"),
@@ -82,6 +86,14 @@ class ScrapeService:
                 keep_debug_images=req.keep_debug_images,
                 mask_table_regions=not req.allow_table_pages,
                 only_urls=req.only_urls,
+                chunk_target_tokens=settings.chunk_target_tokens,
+                chunk_overlap_tokens=settings.chunk_overlap_tokens,
+                enable_vectorization=settings.vectorization_enabled,
+                embedding_model=settings.embedding_model,
+                embedding_batch_size=settings.embedding_batch_size,
+                milvus_uri=settings.milvus_uri,
+                milvus_token=settings.milvus_token,
+                milvus_collection=settings.milvus_collection,
             )
 
             raw_rows = read_raw_rows(self.raw_output_root, req.date)

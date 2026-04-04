@@ -113,6 +113,8 @@ def raw_rows_to_scrape_result(target_date: date, rows: list[dict[str, Any]]) -> 
                 "table_detected": bool(row.get("table_detected", False)),
                 "rg_section": row.get("rg_section", "") or "",
                 "rg_subsection": row.get("rg_subsection", "") or "",
+                "is_vectorized": bool(row.get("is_vectorized", False)),
+                "milvus_vector_id": row.get("milvus_vector_id", "") or "",
             }
         )
 

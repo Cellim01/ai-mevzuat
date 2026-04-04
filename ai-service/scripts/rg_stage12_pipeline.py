@@ -18,6 +18,9 @@ try:
 except ImportError:
     from ocr_utils import OcrConfig, ocr_pdf_file
 
+from services.chunking import ChunkingConfig, build_document_chunks
+from services.vector_indexer import MilvusVectorIndexer, VectorizationConfig
+
 
 BROWSER_HEADERS = {
     "User-Agent": (
@@ -346,15 +349,24 @@ def run_pipeline(
     keep_debug_images: bool,
     mask_table_regions: bool,
     only_urls: list[str] | None,
+    chunk_target_tokens: int = 512,
+    chunk_overlap_tokens: int = 64,
+    enable_vectorization: bool = True,
+    embedding_model: str = "intfloat/multilingual-e5-large",
+    embedding_batch_size: int = 16,
+    milvus_uri: str = "http://localhost:19531",
+    milvus_token: str = "",
+    milvus_collection: str = "rg_document_chunks",
 ) -> None:
     ymd = target_date.strftime("%Y%m%d")
+    total_steps = 4 if enable_vectorization else 3
     run_root = output_dir / ymd
     files_dir = run_root / "files"
     debug_img_dir = run_root / "debug_ocr_pages"
     files_dir.mkdir(parents=True, exist_ok=True)
 
     index_url = build_index_url(target_date)
-    print(f"[1/3] Fetching index: {index_url}")
+    print(f"[1/{total_steps}] Fetching index: {index_url}")
 
     with httpx.Client(
         timeout=45.0,
@@ -400,13 +412,18 @@ def run_pipeline(
                 "sources": [asdict(d) for d in links],
             },
         )
-        print(f"[2/3] Download + extract for {len(links)} sources")
+        print(f"[2/{total_steps}] Download + extract for {len(links)} sources")
 
         rows: list[dict] = []
         embedding_rows: list[dict] = []
+        chunk_rows: list[dict] = []
         docs_with_table_pages = 0
         table_pages_masked_total = 0
         table_regions_masked_total = 0
+        chunk_cfg = ChunkingConfig(
+            target_tokens=max(64, chunk_target_tokens),
+            overlap_tokens=max(0, chunk_overlap_tokens),
+        )
         for i, src in enumerate(links, start=1):
             print(f"  - ({i}/{len(links)}) {src.source_type.upper()} {src.source_url}")
             blob = fetch_bytes(client, src.source_url, referrer=index_url)
@@ -445,6 +462,30 @@ def run_pipeline(
 
             resolved_title = resolve_embedding_title(src.title_hint, raw_text, src.source_url)
             embedding_text = build_embedding_text(raw_text, title=resolved_title)
+            doc_id = hashlib.sha1(
+                f"{target_date.strftime('%Y-%m-%d')}|{src.source_url}".encode("utf-8")
+            ).hexdigest()[:24]
+            doc_chunks = build_document_chunks(
+                doc_id=doc_id,
+                title=resolved_title,
+                raw_text=raw_text,
+                rg_section=src.rg_section,
+                rg_subsection=src.rg_subsection,
+                cfg=chunk_cfg,
+            )
+            for chunk in doc_chunks:
+                chunk_rows.append(
+                    {
+                        "date": target_date.strftime("%Y-%m-%d"),
+                        "title": resolved_title,
+                        "source_url": src.source_url,
+                        "source_type": src.source_type,
+                        "local_file": str(local_path.as_posix()),
+                        "rg_section": src.rg_section,
+                        "rg_subsection": src.rg_subsection,
+                        **chunk,
+                    }
+                )
 
             rows.append(
                 {
@@ -460,8 +501,12 @@ def run_pipeline(
                     "table_regions_masked": table_regions_masked,
                     "char_count": len(raw_text),
                     "raw_text": raw_text,
+                    "doc_id": doc_id,
+                    "chunk_count": len(doc_chunks),
                     "rg_section": src.rg_section,
                     "rg_subsection": src.rg_subsection,
+                    "is_vectorized": False,
+                    "milvus_vector_id": "",
                 }
             )
             embedding_rows.append(
@@ -474,12 +519,47 @@ def run_pipeline(
                     "local_file": str(local_path.as_posix()),
                     "char_count": len(embedding_text),
                     "embedding_text": embedding_text,
+                    "doc_id": doc_id,
+                    "chunk_count": len(doc_chunks),
+                    "is_vectorized": False,
+                    "milvus_vector_id": "",
                 }
             )
 
-    print("[3/3] Writing raw outputs")
+    vector_result = None
+    if enable_vectorization and chunk_rows:
+        print(f"[3/{total_steps}] Embedding + Milvus indexing for {len(chunk_rows)} chunks")
+        vector_cfg = VectorizationConfig(
+            enabled=True,
+            model_name=embedding_model,
+            batch_size=max(1, embedding_batch_size),
+            milvus_uri=milvus_uri,
+            milvus_token=milvus_token,
+            milvus_collection=milvus_collection,
+        )
+        indexer = MilvusVectorIndexer(vector_cfg)
+        vector_result = indexer.index_chunks(chunk_rows)
+
+        if vector_result.errors:
+            for err in vector_result.errors:
+                print(f"  ! vectorization warning: {err}")
+
+        doc_first_id = vector_result.doc_first_vector_id
+        for row in rows:
+            doc_id = str(row.get("doc_id", ""))
+            vector_id = doc_first_id.get(doc_id, "")
+            row["is_vectorized"] = bool(vector_id)
+            row["milvus_vector_id"] = vector_id
+        for row in embedding_rows:
+            doc_id = str(row.get("doc_id", ""))
+            vector_id = doc_first_id.get(doc_id, "")
+            row["is_vectorized"] = bool(vector_id)
+            row["milvus_vector_id"] = vector_id
+
+    print(f"[{total_steps}/{total_steps}] Writing raw outputs")
     write_jsonl(run_root / "documents_raw.jsonl", rows)
     write_jsonl(run_root / "documents_embedding_text.jsonl", embedding_rows)
+    write_jsonl(run_root / "documents_chunks.jsonl", chunk_rows)
     write_json(
         run_root / "summary.json",
         {
@@ -489,13 +569,22 @@ def run_pipeline(
             "docs_with_table_pages": docs_with_table_pages,
             "table_pages_masked_total": table_pages_masked_total,
             "table_regions_masked_total": table_regions_masked_total,
+            "chunks_written": len(chunk_rows),
+            "vectorization_enabled": enable_vectorization,
+            "vectorized_chunks": 0 if vector_result is None else vector_result.vectorized_chunks,
+            "vector_failed_chunks": 0 if vector_result is None else vector_result.failed_chunks,
+            "vectorized_documents": 0
+            if vector_result is None
+            else len(vector_result.doc_first_vector_id),
             "output_jsonl": str((run_root / "documents_raw.jsonl").as_posix()),
             "output_embedding_jsonl": str((run_root / "documents_embedding_text.jsonl").as_posix()),
+            "output_chunks_jsonl": str((run_root / "documents_chunks.jsonl").as_posix()),
             "notes": [
                 "This pipeline intentionally stops before title/category normalization (step 3).",
                 "PDF sources are OCRed directly with high-contrast preprocessing.",
                 "Table-like regions are masked before OCR so non-table content on the same page is preserved.",
                 "Embedding text is stored separately in documents_embedding_text.jsonl.",
+                "RAG chunks are stored in documents_chunks.jsonl.",
             ],
         },
     )
@@ -531,6 +620,49 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Store preprocessed black-white page images under debug_ocr_pages.",
     )
+    parser.add_argument(
+        "--chunk-target-tokens",
+        type=int,
+        default=512,
+        help="Target token length per chunk.",
+    )
+    parser.add_argument(
+        "--chunk-overlap-tokens",
+        type=int,
+        default=64,
+        help="Token overlap between adjacent chunks.",
+    )
+    parser.add_argument(
+        "--no-vectorize",
+        action="store_true",
+        help="Disable embedding + Milvus indexing stage.",
+    )
+    parser.add_argument(
+        "--embedding-model",
+        default="intfloat/multilingual-e5-large",
+        help="SentenceTransformer model name for chunk embeddings.",
+    )
+    parser.add_argument(
+        "--embedding-batch-size",
+        type=int,
+        default=16,
+        help="Embedding batch size.",
+    )
+    parser.add_argument(
+        "--milvus-uri",
+        default="http://localhost:19531",
+        help="Milvus URI (example: http://localhost:19531).",
+    )
+    parser.add_argument(
+        "--milvus-token",
+        default="",
+        help="Milvus token if auth is enabled.",
+    )
+    parser.add_argument(
+        "--milvus-collection",
+        default="rg_document_chunks",
+        help="Milvus collection name for chunk vectors.",
+    )
     return parser.parse_args()
 
 
@@ -547,4 +679,12 @@ if __name__ == "__main__":
         keep_debug_images=args.keep_debug_images,
         mask_table_regions=not args.allow_table_pages,
         only_urls=args.only_url or None,
+        chunk_target_tokens=args.chunk_target_tokens,
+        chunk_overlap_tokens=args.chunk_overlap_tokens,
+        enable_vectorization=not args.no_vectorize,
+        embedding_model=args.embedding_model,
+        embedding_batch_size=args.embedding_batch_size,
+        milvus_uri=args.milvus_uri,
+        milvus_token=args.milvus_token,
+        milvus_collection=args.milvus_collection,
     )

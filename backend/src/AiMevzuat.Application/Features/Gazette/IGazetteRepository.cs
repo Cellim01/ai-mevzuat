@@ -16,6 +16,10 @@ public interface IGazetteRepository : IRepository<GazetteDocument>
         CancellationToken ct = default);
 
     Task<GazetteDocument?> GetByIdWithIssueAsync(Guid id, CancellationToken ct = default);
+
+    Task<IReadOnlyList<GazetteDocument>> GetBySourceUrlsAsync(
+        IReadOnlyCollection<string> sourceUrls,
+        CancellationToken ct = default);
 }
 
 public interface IUserRepository : IRepository<Domain.Entities.User>

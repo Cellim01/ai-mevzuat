@@ -10,3 +10,5 @@ pydantic==2.9.2
 pydantic-settings==2.5.2
 loguru==0.7.2
 tenacity==9.0.0
+sentence-transformers==3.2.1
+pymilvus==2.5.0

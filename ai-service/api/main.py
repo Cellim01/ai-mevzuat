@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from api.routes.scrape import router as scrape_router
+from services.semantic_search_service import MilvusSemanticSearchService, SemanticSearchConfig
 from services.scrape_service import ScrapeService
 from utils.backend_client import BackendClient
 from utils.config import settings
@@ -63,9 +64,20 @@ def create_app() -> FastAPI:
         job_store=job_store,
         raw_output_root=Path("output/raw"),
     )
+    semantic_search_service = MilvusSemanticSearchService(
+        SemanticSearchConfig(
+            enabled=settings.vectorization_enabled,
+            model_name=settings.embedding_model,
+            milvus_uri=settings.milvus_uri,
+            milvus_token=settings.milvus_token,
+            milvus_collection=settings.milvus_collection,
+        )
+    )
 
     app.state.scrape_service = scrape_service
+    app.state.semantic_search_service = semantic_search_service
     app.include_router(scrape_router)
+
     return app
 
 

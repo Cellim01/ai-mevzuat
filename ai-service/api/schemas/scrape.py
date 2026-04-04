@@ -20,3 +20,8 @@ class RawScrapeRequest(BaseModel):
     save_to_backend: bool = True
     only_urls: list[str] | None = None
     preview_limit: int = 20
+
+
+class VectorSearchRequest(BaseModel):
+    query: str
+    max_results: int = 5

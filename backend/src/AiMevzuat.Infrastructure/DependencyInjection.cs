@@ -7,6 +7,7 @@ using AiMevzuat.Infrastructure.Identity;
 using AiMevzuat.Infrastructure.Persistence;
 using AiMevzuat.Infrastructure.Persistence.Repositories;
 using AiMevzuat.Infrastructure.Services;
+using AiMevzuat.Infrastructure.Services.Groq;
 using AiMevzuat.Infrastructure.Services.Mevzuat;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -44,6 +45,7 @@ public static class DependencyInjection
         // AI Service client
         services.AddHttpClient<IAiServiceClient, AiServiceClient>();
         services.AddHttpClient<IExternalLawClient, MevzuatMcpClient>();
+        services.AddHttpClient<ILegalAnswerClient, GroqLlamaAnswerClient>();
 
         return services;
     }

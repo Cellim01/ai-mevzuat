@@ -5,7 +5,9 @@ public record LegalQueryResponse(
     bool UsedExternalFallback,
     bool FromCache,
     string Message,
-    List<LegalSourceDto> Sources
+    List<LegalSourceDto> Sources,
+    string? Answer = null,
+    string? AnswerModel = null
 );
 
 public record LegalSourceDto(

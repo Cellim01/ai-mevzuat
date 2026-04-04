@@ -71,6 +71,78 @@ public class AiServiceClient : IAiServiceClient
         return await GetAsync($"/scrape/raw/output/{date:yyyy-MM-dd}?limit={normalizedLimit}", ct);
     }
 
+    public async Task<IReadOnlyList<VectorSearchHit>> QueryVectorAsync(
+        string query,
+        int maxResults = 5,
+        CancellationToken ct = default)
+    {
+        var q = (query ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(q))
+            return Array.Empty<VectorSearchHit>();
+
+        var payload = new
+        {
+            query = q,
+            max_results = Math.Clamp(maxResults, 1, 20),
+        };
+
+        var body = await PostAsync("/search/vector", payload, ct);
+        if (string.IsNullOrWhiteSpace(body))
+            return Array.Empty<VectorSearchHit>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("hits", out var hitsNode) ||
+                hitsNode.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<VectorSearchHit>();
+            }
+
+            var list = new List<VectorSearchHit>();
+            foreach (var hit in hitsNode.EnumerateArray())
+            {
+                var sourceUrl = hit.TryGetProperty("source_url", out var srcNode)
+                    ? (srcNode.GetString() ?? string.Empty).Trim()
+                    : string.Empty;
+                if (string.IsNullOrWhiteSpace(sourceUrl))
+                    continue;
+
+                var title = hit.TryGetProperty("title", out var titleNode)
+                    ? titleNode.GetString()
+                    : null;
+                var snippet = hit.TryGetProperty("snippet", out var snippetNode)
+                    ? (snippetNode.GetString() ?? string.Empty).Trim()
+                    : string.Empty;
+                var docId = hit.TryGetProperty("doc_id", out var docNode)
+                    ? docNode.GetString()
+                    : null;
+
+                double score = 0;
+                if (hit.TryGetProperty("score", out var scoreNode))
+                {
+                    if (scoreNode.ValueKind == JsonValueKind.Number)
+                        scoreNode.TryGetDouble(out score);
+                    else if (scoreNode.ValueKind == JsonValueKind.String)
+                        double.TryParse(scoreNode.GetString(), out score);
+                }
+
+                list.Add(new VectorSearchHit(
+                    SourceUrl: sourceUrl,
+                    Title: title,
+                    Snippet: snippet,
+                    Score: score,
+                    DocId: docId));
+            }
+
+            return list;
+        }
+        catch
+        {
+            return Array.Empty<VectorSearchHit>();
+        }
+    }
+
     private async Task<string?> GetAsync(string path, CancellationToken ct)
     {
         var res = await _http.GetAsync(path, ct);
