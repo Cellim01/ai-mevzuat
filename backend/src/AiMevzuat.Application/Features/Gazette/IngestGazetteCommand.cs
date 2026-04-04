@@ -99,7 +99,8 @@ public class IngestGazetteCommandHandler
                 LocalFilePath  = string.IsNullOrWhiteSpace(dto.LocalFilePath)? null : dto.LocalFilePath,
                 TableDetected  = dto.TableDetected,
                 GazetteIssueId = issue.Id,
-                IsVectorized   = false,
+                IsVectorized   = dto.IsVectorized,
+                MilvusVectorId = NormalizeMilvusVectorId(dto.MilvusVectorId),
                 RgSection      = string.IsNullOrWhiteSpace(dto.RgSection)    ? null : dto.RgSection.Trim(),
                 RgSubSection   = string.IsNullOrWhiteSpace(dto.RgSubSection) ? null : dto.RgSubSection.Trim(),
             };
@@ -165,5 +166,14 @@ public class IngestGazetteCommandHandler
             return "YargiKarari";
 
         return trimmed;
+    }
+
+    private static string? NormalizeMilvusVectorId(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= 128 ? trimmed : trimmed[..128];
     }
 }

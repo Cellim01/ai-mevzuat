@@ -1,0 +1,45 @@
+services:
+  etcd-ai-mevzuat:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: etcd-ai-mevzuat
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >
+      etcd
+      -advertise-client-urls=http://0.0.0.0:2379
+      -listen-client-urls=http://0.0.0.0:2379
+      --data-dir /etcd
+    volumes:
+      - ./milvus_ai_mevzuat/etcd:/etcd
+    restart: unless-stopped
+
+  minio-ai-mevzuat:
+    image: minio/minio:RELEASE.2024-01-18T22-51-28Z
+    container_name: minio-ai-mevzuat
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data
+    volumes:
+      - ./milvus_ai_mevzuat/minio:/minio_data
+    restart: unless-stopped
+
+  milvus-ai-mevzuat:
+    image: milvusdb/milvus:v2.5.0
+    container_name: milvus-ai-mevzuat
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd-ai-mevzuat:2379
+      MINIO_ADDRESS: minio-ai-mevzuat:9000
+    depends_on:
+      - etcd-ai-mevzuat
+      - minio-ai-mevzuat
+    ports:
+      - "19531:19530"
+      - "9092:9091"
+    volumes:
+      - ./milvus_ai_mevzuat/milvus:/var/lib/milvus
+    restart: unless-stopped

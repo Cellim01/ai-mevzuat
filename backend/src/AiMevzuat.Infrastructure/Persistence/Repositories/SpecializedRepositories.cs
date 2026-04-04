@@ -72,6 +72,46 @@ public class GazetteRepository : Repository<GazetteDocument>, IGazetteRepository
 
     public async Task<GazetteDocument?> GetByIdWithIssueAsync(Guid id, CancellationToken ct = default)
         => await _set.Include(d => d.Issue).FirstOrDefaultAsync(d => d.Id == id, ct);
+
+    public async Task<IReadOnlyList<GazetteDocument>> GetBySourceUrlsAsync(
+        IReadOnlyCollection<string> sourceUrls,
+        CancellationToken ct = default)
+    {
+        if (sourceUrls.Count == 0)
+            return Array.Empty<GazetteDocument>();
+
+        var normalized = sourceUrls
+            .Select(x => (x ?? string.Empty).Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (normalized.Count == 0)
+            return Array.Empty<GazetteDocument>();
+
+        var orderMap = normalized
+            .Select((url, idx) => (url, idx))
+            .ToDictionary(x => x.url, x => x.idx, StringComparer.OrdinalIgnoreCase);
+
+        var docs = await _set
+            .Include(d => d.Issue)
+            .Where(d =>
+                (d.HtmlUrl != null && normalized.Contains(d.HtmlUrl)) ||
+                (d.PdfUrl != null && normalized.Contains(d.PdfUrl)))
+            .ToListAsync(ct);
+
+        return docs
+            .OrderBy(d =>
+            {
+                var idx = int.MaxValue;
+                if (!string.IsNullOrWhiteSpace(d.HtmlUrl) && orderMap.TryGetValue(d.HtmlUrl, out var hIdx))
+                    idx = Math.Min(idx, hIdx);
+                if (!string.IsNullOrWhiteSpace(d.PdfUrl) && orderMap.TryGetValue(d.PdfUrl, out var pIdx))
+                    idx = Math.Min(idx, pIdx);
+                return idx;
+            })
+            .ThenByDescending(d => d.Issue.PublishedDate)
+            .ToList();
+    }
 }
 
 // ── GazetteIssue Repository ───────────────────────────────────────────────────

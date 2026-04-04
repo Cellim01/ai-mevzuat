@@ -13,7 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from api.schemas.scrape import RawScrapeRequest
+from api.schemas.scrape import RawScrapeRequest, VectorSearchRequest
 from services.scrape_service import ScrapeService
 
 router = APIRouter()
@@ -21,6 +21,10 @@ router = APIRouter()
 
 def _service(request: Request) -> ScrapeService:
     return request.app.state.scrape_service
+
+
+def _semantic_service(request: Request):
+    return request.app.state.semantic_search_service
 
 
 @router.get("/health", summary="Service health")
@@ -69,3 +73,19 @@ async def scrape_raw_output(target_date: date, request: Request, limit: int = 20
     except Exception as exc:
         logger.exception(f"Raw output okuma hatasi: {exc}")
         return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@router.post("/search/vector", summary="Query-time semantic vector search")
+async def search_vector(req: VectorSearchRequest, request: Request):
+    q = (req.query or "").strip()
+    if not q:
+        return JSONResponse(status_code=400, content={"error": "query zorunludur"})
+
+    max_results = max(1, min(req.max_results, 20))
+    hits = _semantic_service(request).search(q, max_results=max_results)
+    return {
+        "query": q,
+        "max_results": max_results,
+        "count": len(hits),
+        "hits": hits,
+    }

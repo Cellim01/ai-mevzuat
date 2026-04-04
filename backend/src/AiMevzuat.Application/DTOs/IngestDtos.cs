@@ -32,7 +32,11 @@ public record IngestDocumentDto(
     string? RgSubSection,     // ör: "YÖNETMELİKLER"
 
     // OCR meta
-    bool   TableDetected
+    bool   TableDetected,
+
+    // Vector index meta
+    bool   IsVectorized = false,
+    string? MilvusVectorId = null
 );
 
 public record IngestGazetteResponse(

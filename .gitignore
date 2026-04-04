@@ -105,3 +105,7 @@ tmp/
 *.binlog
 build-diag*.txt
 restore-diag*.txt
+
+# Milvus local volumes
+milvus_data/
+milvus_ai_mevzuat/

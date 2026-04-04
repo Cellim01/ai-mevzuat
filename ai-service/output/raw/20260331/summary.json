@@ -5,12 +5,19 @@
   "docs_with_table_pages": 1,
   "table_pages_masked_total": 3,
   "table_regions_masked_total": 3,
+  "chunks_written": 240,
+  "vectorization_enabled": true,
+  "vectorized_chunks": 240,
+  "vector_failed_chunks": 0,
+  "vectorized_documents": 11,
   "output_jsonl": "output/raw/20260331/documents_raw.jsonl",
   "output_embedding_jsonl": "output/raw/20260331/documents_embedding_text.jsonl",
+  "output_chunks_jsonl": "output/raw/20260331/documents_chunks.jsonl",
   "notes": [
     "This pipeline intentionally stops before title/category normalization (step 3).",
     "PDF sources are OCRed directly with high-contrast preprocessing.",
     "Table-like regions are masked before OCR so non-table content on the same page is preserved.",
-    "Embedding text is stored separately in documents_embedding_text.jsonl."
+    "Embedding text is stored separately in documents_embedding_text.jsonl.",
+    "RAG chunks are stored in documents_chunks.jsonl."
   ]
 }

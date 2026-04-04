@@ -40,6 +40,8 @@ class BackendClient:
                     "TableDetected": d.get("table_detected", False),
                     "RgSection":     d.get("rg_section", "") or "",
                     "RgSubSection":  d.get("rg_subsection", "") or "",
+                    "IsVectorized":  d.get("is_vectorized", False),
+                    "MilvusVectorId": d.get("milvus_vector_id", "") or "",
                 }
             )
 
