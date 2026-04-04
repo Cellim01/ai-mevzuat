@@ -17,7 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 from api.routes.scrape import router as scrape_router
-from scripts.ocr_utils import ensure_tesseract
 from services.semantic_search_service import MilvusSemanticSearchService, SemanticSearchConfig
 from services.scrape_service import ScrapeService
 from utils.backend_client import BackendClient
@@ -78,15 +77,6 @@ def create_app() -> FastAPI:
     app.state.scrape_service = scrape_service
     app.state.semantic_search_service = semantic_search_service
     app.include_router(scrape_router)
-
-    @app.on_event("startup")
-    async def _validate_startup_dependencies() -> None:
-        try:
-            tesseract_path = ensure_tesseract()
-            logger.info(f"Tesseract bulundu: {tesseract_path}")
-        except Exception as exc:
-            logger.error(f"Tesseract dogrulamasi basarisiz: {exc}")
-            raise RuntimeError("Tesseract bulunamadi. OCR pipeline baslatilamaz.") from exc
 
     return app
 

@@ -8,10 +8,12 @@ AI-SERVICE-HARITA: api/routes/scrape.py
 from __future__ import annotations
 
 from datetime import date
+from functools import partial
 
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from loguru import logger
+from starlette.concurrency import run_in_threadpool
 
 from api.schemas.scrape import RawScrapeRequest, VectorSearchRequest
 from services.scrape_service import ScrapeService
@@ -82,7 +84,9 @@ async def search_vector(req: VectorSearchRequest, request: Request):
         return JSONResponse(status_code=400, content={"error": "query zorunludur"})
 
     max_results = max(1, min(req.max_results, 20))
-    hits = _semantic_service(request).search(q, max_results=max_results)
+    hits = await run_in_threadpool(
+        partial(_semantic_service(request).search, q, max_results=max_results)
+    )
     return {
         "query": q,
         "max_results": max_results,

@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 
 from api.schemas.scrape import RawScrapeRequest
-from scripts.ocr_utils import OcrConfig
+from scripts.ocr_utils import OcrConfig, ensure_tesseract
 from scripts.rg_stage12_pipeline import run_pipeline
 from services.transform_service import raw_rows_to_scrape_result
 from utils.backend_client import BackendClient
@@ -73,6 +73,9 @@ class ScrapeService:
 
     async def run_raw_scrape(self, req: RawScrapeRequest, job_id: str | None):
         try:
+            tesseract_path = ensure_tesseract()
+            logger.info(f"Tesseract bulundu: {tesseract_path}")
+
             await asyncio.to_thread(
                 run_pipeline,
                 target_date=datetime.strptime(req.date.isoformat(), "%Y-%m-%d"),
