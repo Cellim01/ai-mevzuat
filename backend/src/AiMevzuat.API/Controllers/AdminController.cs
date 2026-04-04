@@ -1,5 +1,6 @@
-﻿using AiMevzuat.Application.Common.Interfaces;
-using AiMevzuat.Application.Features.Legal;
+using AiMevzuat.Application.Common.Interfaces;
+using AiMevzuat.Application.Features.Admin;
+using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,35 +11,25 @@ namespace AiMevzuat.API.Controllers;
 [Authorize(Roles = "Admin")]
 public class AdminController : ControllerBase
 {
-    private readonly IAiServiceClient _aiServiceClient;
-    private readonly IExternalLawCacheRepository _externalLawCacheRepository;
+    private readonly IMediator _mediator;
 
-    public AdminController(
-        IAiServiceClient aiServiceClient,
-        IExternalLawCacheRepository externalLawCacheRepository)
-    {
-        _aiServiceClient = aiServiceClient;
-        _externalLawCacheRepository = externalLawCacheRepository;
-    }
+    public AdminController(IMediator mediator) => _mediator = mediator;
 
     [HttpGet("ai/health")]
     public async Task<IActionResult> GetAiHealth(CancellationToken ct)
-        => await Proxy(async () => await _aiServiceClient.GetHealthAsync(ct));
+        => await Proxy(() => _mediator.Send(new GetAiHealthQuery(), ct));
 
     [HttpGet("jobs")]
     public async Task<IActionResult> ListJobs(CancellationToken ct)
-        => await Proxy(async () => await _aiServiceClient.ListJobsAsync(ct));
+        => await Proxy(() => _mediator.Send(new ListAiJobsQuery(), ct));
 
     [HttpGet("jobs/{jobId}")]
     public async Task<IActionResult> GetJobStatus(string jobId, CancellationToken ct)
-        => await Proxy(async () => await _aiServiceClient.GetJobStatusAsync(jobId, ct));
+        => await Proxy(() => _mediator.Send(new GetAiJobStatusQuery(jobId), ct));
 
     [HttpPost("scrape/raw")]
     public async Task<IActionResult> ScrapeRaw([FromBody] AdminRawScrapeRequest req, CancellationToken ct)
     {
-        if (!DateOnly.TryParse(req.Date, out var date))
-            return BadRequest(new { message = "Gecersiz tarih formati. YYYY-MM-DD bekleniyor." });
-
         var options = new RawScrapeOptions(
             MaxDocs: req.MaxDocs,
             IncludeMainPdf: req.IncludeMainPdf,
@@ -49,28 +40,18 @@ public class AdminController : ControllerBase
             PreviewLimit: req.PreviewLimit
         );
 
-        return await Proxy(async () => await _aiServiceClient.ScrapeRawAsync(date, options, ct));
+        return await Proxy(() => _mediator.Send(new TriggerRawScrapeCommand(req.Date, options), ct));
     }
 
     [HttpGet("scrape/raw/output/{targetDate}")]
-    public async Task<IActionResult> GetRawOutput(string targetDate, [FromQuery] int limit = 20, CancellationToken ct = default)
-    {
-        if (!DateOnly.TryParse(targetDate, out var date))
-            return BadRequest(new { message = "Gecersiz tarih formati. YYYY-MM-DD bekleniyor." });
-
-        return await Proxy(async () => await _aiServiceClient.GetRawOutputAsync(date, limit, ct));
-    }
+    public async Task<IActionResult> GetRawOutput(DateOnly targetDate, [FromQuery] int limit = 20, CancellationToken ct = default)
+        => await Proxy(() => _mediator.Send(new GetRawOutputQuery(targetDate, limit), ct));
 
     [HttpDelete("legal/cache")]
     public async Task<IActionResult> ClearLegalCache([FromQuery] string? query = null, CancellationToken ct = default)
     {
-        var deleted = await _externalLawCacheRepository.ClearAsync(query, ct);
-        return Ok(new
-        {
-            deleted,
-            query = query ?? string.Empty,
-            message = deleted == 0 ? "Silinecek cache kaydi bulunamadi." : $"{deleted} cache kaydi silindi."
-        });
+        var result = await _mediator.Send(new ClearExternalLawCacheCommand(query), ct);
+        return Ok(result);
     }
 
     private async Task<IActionResult> Proxy(Func<Task<string?>> call)
@@ -95,7 +76,7 @@ public class AdminController : ControllerBase
 }
 
 public record AdminRawScrapeRequest(
-    string Date,
+    DateOnly Date,
     int MaxDocs = 0,
     bool IncludeMainPdf = false,
     bool KeepDebugImages = false,

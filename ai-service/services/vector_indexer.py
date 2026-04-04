@@ -8,6 +8,7 @@ AI-SERVICE-HARITA: services/vector_indexer.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import Any
 
 from loguru import logger
@@ -35,19 +36,23 @@ class VectorizationResult:
 class MilvusVectorIndexer:
     def __init__(self, cfg: VectorizationConfig):
         self.cfg = cfg
+        self._model = None
+        self._model_lock = Lock()
+
+    def _get_model(self):
+        if self._model is not None:
+            return self._model
+
+        with self._model_lock:
+            if self._model is None:
+                from sentence_transformers import SentenceTransformer  # type: ignore
+
+                self._model = SentenceTransformer(self.cfg.model_name)
+        return self._model
 
     def index_chunks(self, chunk_rows: list[dict[str, Any]]) -> VectorizationResult:
         result = VectorizationResult(total_chunks=len(chunk_rows))
         if not self.cfg.enabled or not chunk_rows:
-            return result
-
-        try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
-        except Exception as exc:  # pragma: no cover - runtime dependency
-            msg = f"sentence-transformers import hatasi: {exc}"
-            logger.warning(msg)
-            result.errors.append(msg)
-            result.failed_chunks = result.total_chunks
             return result
 
         try:
@@ -67,7 +72,7 @@ class MilvusVectorIndexer:
             return result
 
         try:
-            model = SentenceTransformer(self.cfg.model_name)
+            model = self._get_model()
             passages = [f"passage: {r.get('chunk_text', '')}" for r in chunk_rows]
             vectors = model.encode(
                 passages,

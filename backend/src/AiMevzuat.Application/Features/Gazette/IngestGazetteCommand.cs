@@ -35,21 +35,23 @@ public class IngestGazetteCommandHandler
     {
         var req = cmd.Request;
 
+        if (req.Documents == null || req.Documents.Count == 0)
+            throw new ArgumentException("Belge listesi bos.");
         if (!DateOnly.TryParse(req.PublishedDate, out var publishedDate))
-            throw new ArgumentException($"Geçersiz tarih formatı: {req.PublishedDate}");
+            throw new ArgumentException($"Gecersiz tarih formati: {req.PublishedDate}");
 
-        // Aynı tarihte sayı zaten var mı?
+        // Ayni tarihte sayi zaten var mi?
         var existing = await _issueRepo.GetByDateAsync(publishedDate, ct);
         if (existing != null)
             return new IngestGazetteResponse(
                 existing.Id, 0, req.Documents.Count,
-                $"{publishedDate} tarihli sayı zaten mevcut (Sayı: {existing.IssueNumber}).");
+                $"{publishedDate} tarihli sayi zaten mevcut (Sayi: {existing.IssueNumber}).");
 
-        // İlk PDF belgeden ana PDF URL'i çıkar
+        // Ilk PDF belgeden ana PDF URL'i cikar
         var firstPdf = req.Documents.FirstOrDefault(d =>
             string.Equals(d.SourceType, "pdf", StringComparison.OrdinalIgnoreCase));
 
-        // GazetteIssue oluştur
+        // GazetteIssue olustur
         var issue = new GazetteIssue
         {
             IssueNumber    = req.IssueNumber ?? 0,
@@ -66,8 +68,8 @@ public class IngestGazetteCommandHandler
 
         foreach (var dto in req.Documents)
         {
-            // Başlıksız veya çok kısa metinli belgeleri atla
-            if (string.IsNullOrWhiteSpace(dto.Title) || dto.Title == "Başlıksız Belge")
+            // Basliksiz veya cok kisa metinli belgeleri atla
+            if (string.IsNullOrWhiteSpace(dto.Title) || dto.Title == "Basliksiz Belge")
             {
                 skipped++;
                 continue;
@@ -119,7 +121,7 @@ public class IngestGazetteCommandHandler
 
         return new IngestGazetteResponse(
             issue.Id, saved, skipped,
-            $"Sayı {issue.IssueNumber} kaydedildi: {saved} belge eklendi, {skipped} atlandı.");
+            $"Sayi {issue.IssueNumber} kaydedildi: {saved} belge eklendi, {skipped} atlandi.");
     }
 
     private static string BuildSearchText(IngestDocumentDto dto)

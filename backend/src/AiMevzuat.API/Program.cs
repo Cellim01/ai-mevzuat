@@ -2,6 +2,7 @@ using System.Text;
 using System.Security.Cryptography;
 using System.Data;
 using System.Data.Common;
+using AiMevzuat.API.Filters;
 using AiMevzuat.Infrastructure;
 using AiMevzuat.Infrastructure.Persistence;
 using MediatR;
@@ -20,6 +21,7 @@ ValidateAiServiceBaseUrl(builder.Configuration);
 ValidateGroqConfiguration(builder.Configuration);
 
 builder.Services.AddControllers();
+builder.Services.AddScoped<AiServiceApiKeyFilter>();
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(c =>

@@ -8,6 +8,7 @@ AI-SERVICE-HARITA: services/semantic_search_service.py
 from __future__ import annotations
 
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 from loguru import logger
@@ -25,6 +26,19 @@ class SemanticSearchConfig:
 class MilvusSemanticSearchService:
     def __init__(self, cfg: SemanticSearchConfig):
         self.cfg = cfg
+        self._model = None
+        self._model_lock = Lock()
+
+    def _get_model(self):
+        if self._model is not None:
+            return self._model
+
+        with self._model_lock:
+            if self._model is None:
+                from sentence_transformers import SentenceTransformer  # type: ignore
+
+                self._model = SentenceTransformer(self.cfg.model_name)
+        return self._model
 
     def search(self, query: str, max_results: int = 5) -> list[dict[str, Any]]:
         q = (query or "").strip()
@@ -33,14 +47,13 @@ class MilvusSemanticSearchService:
             return []
 
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
             from pymilvus import Collection, connections, utility  # type: ignore
         except Exception as exc:  # pragma: no cover - runtime dependency
             logger.warning(f"Semantic search dependency hatasi: {exc}")
             return []
 
         try:
-            model = SentenceTransformer(self.cfg.model_name)
+            model = self._get_model()
             query_vec = model.encode(
                 [f"query: {q}"],
                 show_progress_bar=False,
