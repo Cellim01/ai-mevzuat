@@ -33,7 +33,9 @@ public class GetGazetteByIdHandler : IRequestHandler<GetGazetteByIdQuery, Gazett
             IssueId:       doc.GazetteIssueId,
             IssueNumber:   doc.Issue.IssueNumber,
             PublishedDate: doc.Issue.PublishedDate.ToString("yyyy-MM-dd"),
-            MainPdfUrl:    doc.Issue.MainPdfUrl);
+            MainPdfUrl:    doc.Issue.MainPdfUrl,
+            RgSection:     doc.RgSection,
+            RgSubSection:  doc.RgSubSection);
     }
 }
 

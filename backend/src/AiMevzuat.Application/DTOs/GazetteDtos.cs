@@ -16,7 +16,10 @@ public record GazetteDocumentDto(
     Guid     IssueId,
     int      IssueNumber,
     string   PublishedDate,
-    string?  MainPdfUrl
+    string?  MainPdfUrl,
+    // Resmi Gazete hiyerarşisi
+    string?  RgSection,
+    string?  RgSubSection
 );
 
 public record GazetteIssueDto(

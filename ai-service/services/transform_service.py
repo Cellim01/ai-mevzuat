@@ -111,6 +111,8 @@ def raw_rows_to_scrape_result(target_date: date, rows: list[dict[str, Any]]) -> 
                 "start_page": 0,
                 "end_page": 0,
                 "table_detected": bool(row.get("table_detected", False)),
+                "rg_section": row.get("rg_section", "") or "",
+                "rg_subsection": row.get("rg_subsection", "") or "",
             }
         )
 

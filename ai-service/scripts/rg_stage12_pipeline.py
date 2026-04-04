@@ -35,6 +35,8 @@ class SourceDoc:
     title_hint: str
     source_url: str
     source_type: str
+    rg_section: str = ""       # ör: "YÜRÜTME VE İDARE BÖLÜMÜ"
+    rg_subsection: str = ""    # ör: "YÖNETMELİKLER"
 
 
 def decode_content(raw: bytes) -> str:
@@ -233,13 +235,52 @@ def _infer_source_type_from_url(url: str) -> str | None:
     return None
 
 
-def collect_source_links(index_url: str, index_html: str, date_token: str, include_main_pdf: bool) -> list[SourceDoc]:
+# Resmi Gazete'nin gerçek HTML yapısındaki bilinen ana bölümler
+_RG_MAIN_SECTIONS = {
+    "YÜRÜTME VE İDARE BÖLÜMÜ",
+    "YARGI BÖLÜMÜ",
+    "İLÂN BÖLÜMÜ",
+    "İLAN BÖLÜMÜ",
+    "TÜRKİYE BÜYÜK MİLLET MECLİSİ",
+}
+
+
+def _normalise_heading(text: str) -> str:
+    """Bölüm başlığını normalize et (boşluk, tire ve Latinize)."""
+    return re.sub(r"\s+", " ", (text or "").strip()).upper()
+
+
+def _is_main_section(heading: str) -> bool:
+    """Bilinen ana bölümlere uyuyor mu?"""
+    h = heading.upper()
+    return any(s in h for s in _RG_MAIN_SECTIONS)
+
+
+def collect_source_links(
+    index_url: str, index_html: str, date_token: str, include_main_pdf: bool
+) -> list[SourceDoc]:
     soup = BeautifulSoup(index_html, "lxml")
     out: list[SourceDoc] = []
     seen: set[str] = set()
 
-    for a in soup.find_all("a", href=True):
-        href = a.get("href", "").strip()
+    current_section = ""
+    current_subsection = ""
+
+    # Tüm relevan elementleri sırayla tara
+    for tag in soup.find_all(["b", "a"]):
+        if tag.name == "b":
+            heading = _normalise_heading(tag.get_text(" ", strip=True))
+            if not heading:
+                continue
+            if _is_main_section(heading):
+                current_section = heading
+                current_subsection = ""
+            elif current_section:  # Ana bölüm altındaki alt başlık
+                current_subsection = heading
+            continue
+
+        # <a href> tagı
+        href = tag.get("href", "").strip()
         if date_token not in href:
             continue
 
@@ -248,13 +289,18 @@ def collect_source_links(index_url: str, index_html: str, date_token: str, inclu
             continue
         if source_url in seen:
             continue
-
         if not include_main_pdf and source_url.lower().endswith(f"/{date_token}.pdf"):
             continue
 
         seen.add(source_url)
-        title_hint = normalize_text(a.get_text(" ", strip=True))
-        out.append(SourceDoc(title_hint=title_hint, source_url=source_url, source_type=source_type))
+        title_hint = normalize_text(tag.get_text(" ", strip=True))
+        out.append(SourceDoc(
+            title_hint=title_hint,
+            source_url=source_url,
+            source_type=source_type,
+            rg_section=current_section,
+            rg_subsection=current_subsection,
+        ))
 
     return out
 
@@ -414,6 +460,8 @@ def run_pipeline(
                     "table_regions_masked": table_regions_masked,
                     "char_count": len(raw_text),
                     "raw_text": raw_text,
+                    "rg_section": src.rg_section,
+                    "rg_subsection": src.rg_subsection,
                 }
             )
             embedding_rows.append(

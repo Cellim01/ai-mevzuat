@@ -38,6 +38,8 @@ class BackendClient:
                     "StartPage":     d.get("start_page", 0),
                     "EndPage":       d.get("end_page", 0),
                     "TableDetected": d.get("table_detected", False),
+                    "RgSection":     d.get("rg_section", "") or "",
+                    "RgSubSection":  d.get("rg_subsection", "") or "",
                 }
             )
 

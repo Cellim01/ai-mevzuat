@@ -54,7 +54,9 @@ public class GetGazettesQueryHandler
             IssueId:       d.GazetteIssueId,
             IssueNumber:   d.Issue.IssueNumber,
             PublishedDate: d.Issue.PublishedDate.ToString("yyyy-MM-dd"),
-            MainPdfUrl:    d.Issue.MainPdfUrl
+            MainPdfUrl:    d.Issue.MainPdfUrl,
+            RgSection:     d.RgSection,
+            RgSubSection:  d.RgSubSection
         ));
 
         return new PagedResult<GazetteDocumentDto>(dtos, total, q.Page, q.PageSize);

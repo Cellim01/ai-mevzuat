@@ -100,6 +100,8 @@ public class IngestGazetteCommandHandler
                 TableDetected  = dto.TableDetected,
                 GazetteIssueId = issue.Id,
                 IsVectorized   = false,
+                RgSection      = string.IsNullOrWhiteSpace(dto.RgSection)    ? null : dto.RgSection.Trim(),
+                RgSubSection   = string.IsNullOrWhiteSpace(dto.RgSubSection) ? null : dto.RgSubSection.Trim(),
             };
 
             await _docRepo.AddAsync(doc, ct);

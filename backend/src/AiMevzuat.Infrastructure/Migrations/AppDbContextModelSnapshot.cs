@@ -170,6 +170,14 @@ namespace AiMevzuat.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("RgSection")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("RgSubSection")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
                     b.Property<string>("SearchText")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");

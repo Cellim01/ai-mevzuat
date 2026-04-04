@@ -16,8 +16,12 @@ public class GazetteDocument : BaseEntity
     public int StartPage     { get; set; }
     public int EndPage       { get; set; }
 
-    public DocumentCategory Category { get; set; } = DocumentCategory.Diger;
-    public SourceType SourceType     { get; set; } = SourceType.Pdf;
+    public DocumentCategory Category    { get; set; } = DocumentCategory.Diger;
+    public SourceType SourceType        { get; set; } = SourceType.Pdf;
+
+    // Resmi Gazete bölüm hiyerarşisi (scraper'dan gelir, null = bilinmiyor)
+    public string? RgSection            { get; set; }   // ör: "YÜRÜTME VE İDARE BÖLÜMÜ"
+    public string? RgSubSection         { get; set; }   // ör: "YÖNETMELİKLER"
 
     // Kaynak URL'ler
     public string? HtmlUrl       { get; set; }

@@ -27,6 +27,10 @@ public record IngestDocumentDto(
     int    StartPage,
     int    EndPage,
 
+    // Resmi Gazete hiyerarşisi (scraper'dan gelir)
+    string? RgSection,        // ör: "YÜRÜTME VE İDARE BÖLÜMÜ"
+    string? RgSubSection,     // ör: "YÖNETMELİKLER"
+
     // OCR meta
     bool   TableDetected
 );

@@ -37,6 +37,8 @@ public class GazetteDocumentConfiguration : IEntityTypeConfiguration<GazetteDocu
         b.Property(x => x.PdfUrl).HasMaxLength(1024);
         b.Property(x => x.LocalFilePath).HasMaxLength(512);
         b.Property(x => x.MilvusVectorId).HasMaxLength(128);
+        b.Property(x => x.RgSection).HasMaxLength(256);
+        b.Property(x => x.RgSubSection).HasMaxLength(256);
 
         b.HasIndex(x => x.Category);
         b.HasIndex(x => x.GazetteIssueId);

@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { gazetteApi, legalApi } from "../services/api";
 import {
   Search, ChevronLeft, ChevronRight, LogOut, Calendar,
   SlidersHorizontal, X, ChevronDown, User, BookOpen,
-  Sparkles, Bell, Send, FileSearch,
+  Sparkles, Bell, Send, FileSearch, ArrowRight,
 } from "lucide-react";
 
 /* ─── Sabitler ─────────────────────────────────────────────── */
@@ -32,96 +32,136 @@ const CATEGORIES = [
   { value: "Diger", label: "Diğer" },
 ];
 
-const CAT_COLORS = {
-  Yonetmelik: "bg-blue-500/10 text-blue-300 border-blue-500/20",
-  Teblig: "bg-purple-500/10 text-purple-300 border-purple-500/20",
-  Kanun: "bg-red-500/10 text-red-300 border-red-500/20",
-  Cumhurbaskanligi: "bg-yellow-500/10 text-yellow-300 border-yellow-500/20",
-  Bankacilik: "bg-cyan-500/10 text-cyan-300 border-cyan-500/20",
-  SermayePiyasasi: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
-  FinansVergi: "bg-amber-500/10 text-amber-300 border-amber-500/20",
-  DisTicaret: "bg-orange-500/10 text-orange-300 border-orange-500/20",
-  AkademikIlan: "bg-indigo-500/10 text-indigo-300 border-indigo-500/20",
-  InsanKaynaklari: "bg-pink-500/10 text-pink-300 border-pink-500/20",
-  Saglik: "bg-teal-500/10 text-teal-300 border-teal-500/20",
-  CevreEnerji: "bg-lime-500/10 text-lime-300 border-lime-500/20",
-  IhaleIlan: "bg-yellow-600/10 text-yellow-200 border-yellow-600/20",
-  YargiKarari: "bg-red-700/10 text-red-300 border-red-700/20",
-  YargiIlan: "bg-rose-500/10 text-rose-300 border-rose-500/20",
-  CesitliIlan: "bg-slate-500/10 text-slate-300 border-slate-500/20",
-  Diger: "bg-white/5 text-slate2-400 border-white/10",
-};
-
 function catLabel(v) { return CATEGORIES.find(c => c.value === v)?.label ?? v; }
-function catColor(v) { return CAT_COLORS[v] ?? CAT_COLORS.Diger; }
 
-function fmtDate(s) {
-  if (!s) return "—";
-  return new Date(s).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" });
+/* ─── Tarih formatlama ──────────────────────────────────────── */
+function fmtDateKey(dateKey) {
+  if (!dateKey || dateKey === "0000-00-00") return "Tarihi Bilinmiyor";
+  // dateKey is already YYYY-MM-DD — parse as local to avoid UTC offset shift
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("tr-TR", {
+    day: "numeric", month: "long", year: "numeric",
+  });
 }
 
-function excerpt(t, n = 150) {
-  if (!t) return "";
-  const c = t.replace(/\s+/g, " ").trim();
-  return c.length > n ? c.slice(0, n) + "…" : c;
+/* ─── RG section grouping (API'den gelen gerçek veriye göre) ── */
+function groupDocsByRgHeadings(docs) {
+  const FALLBACK_SECTION = "DİĞER";
+  const FALLBACK_SUB    = "SINIFLANDIRILAMAYANLAR";
+  const sectionMap = new Map();
+
+  docs.forEach(doc => {
+    const main = (doc.rgSection   || "").trim() || FALLBACK_SECTION;
+    const sub  = (doc.rgSubSection || "").trim() || FALLBACK_SUB;
+    if (!sectionMap.has(main)) sectionMap.set(main, new Map());
+    const subMap = sectionMap.get(main);
+    if (!subMap.has(sub)) subMap.set(sub, []);
+    subMap.get(sub).push(doc);
+  });
+
+  const SECTION_ORDER = [
+    "TÜRKİYE BÜYÜK MİLLET MECLİSİ",
+    "YÜRÜTME VE İDARE BÖLÜMÜ",
+    "YARGI BÖLÜMÜ",
+    "İLÂN BÖLÜMÜ",
+    "İLAN BÖLÜMÜ",
+    "DİĞER",
+  ];
+  const sorted = Array.from(sectionMap.entries()).sort(([a], [b]) => {
+    const ai = SECTION_ORDER.indexOf(a);
+    const bi = SECTION_ORDER.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b, "tr");
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
+
+  return sorted.map(([main, subMap]) => ({
+    main,
+    subgroups: Array.from(subMap.entries()).map(([sub, items]) => ({ sub, items })),
+  }));
+}
+
+/* ─── groupByDate helper ────────────────────────────────────── */
+function groupDocsByDate(docs) {
+  const map = new Map();
+  docs.forEach(doc => {
+    const raw = doc.publishedDate ?? doc.issue?.publishedDate;
+    // Use the date string directly (YYYY-MM-DD) to avoid UTC conversion
+    const key = raw ? raw.slice(0, 10) : "0000-00-00";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(doc);
+  });
+  return Array.from(map.entries()).sort((a, b) => b[0].localeCompare(a[0]));
 }
 
 /* ─── Skeleton ──────────────────────────────────────────────── */
 function Skeleton() {
   return (
-    <div className="panel-doc-card p-5 space-y-3 animate-pulse">
-      <div className="flex justify-between">
-        <div className="h-3 w-24 rounded bg-obsidian-700" />
-        <div className="h-4 w-16 rounded-full bg-obsidian-700" />
+    <div className="date-group-card animate-pulse">
+      <div className="date-group-header">
+        <div className="flex items-center gap-3">
+          <div className="h-4 w-28 rounded bg-obsidian-700" />
+          <div className="h-3 w-16 rounded-full bg-obsidian-800" />
+        </div>
+        <div className="h-4 w-4 rounded bg-obsidian-700" />
       </div>
-      <div className="h-4 w-3/4 rounded bg-obsidian-700" />
-      <div className="h-3 w-5/6 rounded bg-obsidian-800" />
-      <div className="h-3 w-2/3 rounded bg-obsidian-800" />
     </div>
   );
 }
 
-/* ─── DocCard ───────────────────────────────────────────────── */
-function DocCard({ doc }) {
+/* ─── DateGroup accordion ───────────────────────────────────── */
+function DateGroup({ dateKey, docs }) {
   const navigate = useNavigate();
-  const preview = excerpt(doc.summary, 170);
+  const [open, setOpen] = useState(false);
+  const label = fmtDateKey(dateKey);
+  const groupedByHeadings = useMemo(() => groupDocsByRgHeadings(docs), [docs]);
 
   return (
-    <article
-      onClick={() => navigate(`/panel/belge/${doc.id}`)}
-      className="panel-doc-card group cursor-pointer p-5"
-    >
-      <div className="flex items-start justify-between gap-2 mb-3">
-        <div className="flex items-center gap-1.5 text-slate2-400/50 text-[11px] font-mono">
-          <Calendar size={10} />
-          <span>{fmtDate(doc.publishedDate ?? doc.issue?.publishedDate)}</span>
+    <div className={`date-group-card ${open ? "date-group-card--open" : ""}`}>
+      <button className="date-group-header w-full" onClick={() => setOpen(v => !v)}>
+        <div className="flex items-center gap-3">
+          <div className="date-group-icon">
+            <Calendar size={13} className="text-gold-400" />
+          </div>
+          <span className="date-group-label">{label}</span>
+          <span className="date-group-count">{docs.length} belge</span>
         </div>
-        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full border flex-shrink-0 ${catColor(doc.category)}`}>
-          {catLabel(doc.category)}
-        </span>
+        <div className={`date-group-chevron ${open ? "date-group-chevron--open" : ""}`}>
+          <ChevronDown size={15} />
+        </div>
+      </button>
+
+      <div className={`date-group-body ${open ? "date-group-body--open" : ""}`}>
+        <div className="date-group-list">
+          {groupedByHeadings.map(section => (
+            <div key={section.main} className="rg-section-block">
+              <h4 className="rg-section-title">{section.main}</h4>
+              {section.subgroups.map(subgroup => (
+                <div key={`${section.main}-${subgroup.sub}`} className="rg-subsection-block">
+                  <h5 className="rg-subsection-title">{subgroup.sub}</h5>
+                  <ul>
+                    {subgroup.items.map((doc, i) => (
+                      <li key={doc.id} className="date-doc-row" style={{ animationDelay: `${i * 0.04}s` }}>
+                        <button
+                          onClick={() => navigate(`/panel/belge/${doc.id}`)}
+                          className="date-doc-btn group w-full"
+                        >
+                          <span className="date-doc-title group-hover:text-gold-300 transition-colors">
+                            {doc.title}
+                          </span>
+                          <ArrowRight size={12} className="date-doc-arrow text-gold-500/20 group-hover:text-gold-400 transition-all group-hover:translate-x-0.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
-
-      <h3 className="font-display text-sm font-light text-slate2-200 leading-snug mb-2 group-hover:text-gold-200 transition-colors line-clamp-2">
-        {doc.title}
-      </h3>
-
-      {preview ? (
-        <p className="text-slate2-400/55 text-[11px] leading-relaxed line-clamp-3 mb-3">
-          {preview}
-        </p>
-      ) : (
-        <p className="text-slate2-400/45 text-[11px] leading-relaxed line-clamp-2 mb-3 italic">
-          Kisa ozet bulunamadi. Detay ve resmi kaynaklar icin belgeyi acin.
-        </p>
-      )}
-
-      <div className="flex items-center justify-between pt-2.5 border-t border-white/5">
-        <span className="text-[10px] text-slate2-400/35 font-mono">
-          {doc.pdfUrl || doc.htmlUrl ? "Resmi kaynak mevcut" : "Kaynak bilgisi yok"}
-        </span>
-        <ChevronRight size={11} className="text-gold-500/25 group-hover:text-gold-400 transition-colors" />
-      </div>
-    </article>
+    </div>
   );
 }
 
@@ -144,11 +184,7 @@ function LegalChat() {
     setLoading(true);
     try {
       const res = await legalApi.query(q, 3);
-      setMessages(m => [...m, {
-        role: "ai",
-        text: res.message,
-        sources: res.sources ?? [],
-      }]);
+      setMessages(m => [...m, { role: "ai", text: res.message, sources: res.sources ?? [] }]);
     } catch (e) {
       setMessages(m => [...m, { role: "ai", text: `Hata: ${e.message}`, sources: [] }]);
     } finally {
@@ -164,7 +200,6 @@ function LegalChat() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Mesaj listesi */}
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pb-1 min-h-[200px]">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-center">
@@ -174,13 +209,9 @@ function LegalChat() {
             <p className="text-slate2-400/50 text-sm mb-4">Mevzuat hakkında soru sorun</p>
             <div className="flex flex-col gap-2 w-full max-w-xs">
               {SUGGESTIONS.map(s => (
-                <button
-                  key={s}
-                  onClick={() => { setInput(s); }}
+                <button key={s} onClick={() => setInput(s)}
                   className="text-xs text-slate2-400/60 hover:text-gold-400 px-3 py-1.5 rounded-lg border border-gold-700/10 hover:border-gold-500/25 transition-all text-left"
-                >
-                  {s}
-                </button>
+                >{s}</button>
               ))}
             </div>
           </div>
@@ -236,7 +267,6 @@ function LegalChat() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div className="flex gap-2 pt-3 border-t border-white/5 mt-3">
         <input
           value={input}
@@ -245,15 +275,12 @@ function LegalChat() {
           placeholder="Soru sorun…"
           className="flex-1 bg-obsidian-900 border border-gold-700/15 rounded-xl px-3.5 py-2.5 text-slate2-200 text-sm placeholder-slate2-400/30 focus:outline-none focus:border-gold-500/40 transition-colors"
         />
-        <button
-          onClick={send}
-          disabled={loading || !input.trim()}
+        <button onClick={send} disabled={loading || !input.trim()}
           className="px-3 py-2.5 bg-gold-500/10 hover:bg-gold-500/20 border border-gold-500/18 text-gold-400 rounded-xl transition-all disabled:opacity-30 flex-shrink-0"
         >
           <Send size={14} />
         </button>
       </div>
-
       <style>{`@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}`}</style>
     </div>
   );
@@ -274,10 +301,8 @@ function Pagination({ page, totalPages, onChange }) {
 
   return (
     <div className="flex items-center justify-center gap-1.5 mt-8">
-      <button
-        onClick={() => onChange(page - 1)} disabled={page === 1}
-        className="w-8 h-8 flex items-center justify-center rounded-lg border border-gold-700/12 text-slate2-400 hover:text-gold-400 disabled:opacity-25 transition-all"
-      >
+      <button onClick={() => onChange(page - 1)} disabled={page === 1}
+        className="w-8 h-8 flex items-center justify-center rounded-lg border border-gold-700/12 text-slate2-400 hover:text-gold-400 disabled:opacity-25 transition-all">
         <ChevronLeft size={13} />
       </button>
       {from > 1 && <><button onClick={() => onChange(1)} className="w-8 h-8 flex items-center justify-center rounded-lg border border-gold-700/10 text-slate2-400 text-xs hover:text-slate2-200">1</button>{from > 2 && <span className="text-slate2-400/40 text-xs px-1">…</span>}</>}
@@ -288,10 +313,8 @@ function Pagination({ page, totalPages, onChange }) {
         </button>
       ))}
       {to < totalPages && <>{to < totalPages - 1 && <span className="text-slate2-400/40 text-xs px-1">…</span>}<button onClick={() => onChange(totalPages)} className="w-8 h-8 flex items-center justify-center rounded-lg border border-gold-700/10 text-slate2-400 text-xs hover:text-slate2-200">{totalPages}</button></>}
-      <button
-        onClick={() => onChange(page + 1)} disabled={page === totalPages}
-        className="w-8 h-8 flex items-center justify-center rounded-lg border border-gold-700/12 text-slate2-400 hover:text-gold-400 disabled:opacity-25 transition-all"
-      >
+      <button onClick={() => onChange(page + 1)} disabled={page === totalPages}
+        className="w-8 h-8 flex items-center justify-center rounded-lg border border-gold-700/12 text-slate2-400 hover:text-gold-400 disabled:opacity-25 transition-all">
         <ChevronRight size={13} />
       </button>
     </div>
@@ -303,10 +326,7 @@ export default function PanelPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  /* Nav durumu */
   const [activeNav, setActiveNav] = useState("belgeler");
-
-  /* Belge filtreler */
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [category, setCategory] = useState("");
@@ -314,8 +334,6 @@ export default function PanelPage() {
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
-
-  /* Belge verisi */
   const [docs, setDocs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -354,7 +372,6 @@ export default function PanelPage() {
 
       {/* ─ Sidebar ─ */}
       <aside className="fixed inset-y-0 left-0 w-52 flex flex-col bg-obsidian-900/95 border-r border-gold-700/10 z-40 backdrop-blur-xl">
-        {/* Logo */}
         <div className="px-5 py-6 border-b border-gold-700/10">
           <Link to="/" className="flex items-center gap-2.5 group">
             <div className="relative w-6 h-6 flex-shrink-0">
@@ -367,12 +384,9 @@ export default function PanelPage() {
           </Link>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-2.5 py-4 space-y-0.5">
           {NAV.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              onClick={() => setActiveNav(id)}
+            <button key={id} onClick={() => setActiveNav(id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
                 activeNav === id
                   ? "bg-gold-500/10 text-gold-400 tab-active-bar"
@@ -385,7 +399,6 @@ export default function PanelPage() {
           ))}
         </nav>
 
-        {/* Kullanıcı */}
         <div className="px-3 pb-5 pt-4 border-t border-gold-700/10 space-y-1">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl">
             <div className="w-7 h-7 rounded-full bg-gold-500/12 border border-gold-500/18 flex items-center justify-center flex-shrink-0">
@@ -396,8 +409,7 @@ export default function PanelPage() {
               <p className="text-slate2-400/45 text-[10px] font-mono truncate">{user?.role}</p>
             </div>
           </div>
-          <button
-            onClick={() => { logout(); navigate("/giris"); }}
+          <button onClick={() => { logout(); navigate("/giris"); }}
             className="flex items-center gap-2.5 px-2 py-2 text-slate2-400 hover:text-red-400 text-xs transition-colors w-full rounded-xl hover:bg-red-400/5"
           >
             <LogOut size={13} />
@@ -412,7 +424,6 @@ export default function PanelPage() {
         {/* ── BELGELER ── */}
         {activeNav === "belgeler" && (
           <>
-            {/* Sticky arama header */}
             <header className="sticky top-0 z-30 bg-obsidian-950/96 backdrop-blur-xl border-b border-gold-700/8 px-6 py-3">
               <div className="flex items-center gap-2">
                 <div className="relative flex-1 max-w-md">
@@ -425,14 +436,11 @@ export default function PanelPage() {
                     className="w-full bg-obsidian-800/70 border border-gold-700/12 rounded-xl pl-8 pr-3 py-2 text-slate2-200 text-sm placeholder-slate2-400/30 focus:outline-none focus:border-gold-500/38 transition-colors"
                   />
                 </div>
-                <button
-                  onClick={applySearch}
-                  className="px-3 py-2 bg-gold-500/10 hover:bg-gold-500/18 border border-gold-500/18 text-gold-400 text-xs rounded-xl transition-all"
-                >
+                <button onClick={applySearch}
+                  className="px-3 py-2 bg-gold-500/10 hover:bg-gold-500/18 border border-gold-500/18 text-gold-400 text-xs rounded-xl transition-all">
                   Ara
                 </button>
-                <button
-                  onClick={() => setFilterOpen(v => !v)}
+                <button onClick={() => setFilterOpen(v => !v)}
                   className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs transition-all ${
                     filterOpen || activeCount > 0
                       ? "bg-gold-500/10 border-gold-500/28 text-gold-400"
@@ -449,48 +457,32 @@ export default function PanelPage() {
                 </button>
               </div>
 
-              {/* Filtre paneli */}
               {filterOpen && (
                 <div className="mt-3 p-4 bg-obsidian-900/80 border border-gold-700/10 rounded-2xl backdrop-blur-sm">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Kategori */}
                     <div>
                       <label className="block text-slate2-400/55 text-[10px] tracking-wider uppercase font-mono mb-1.5">Kategori</label>
                       <div className="relative">
-                        <select
-                          value={category}
-                          onChange={e => { setCategory(e.target.value); setPage(1); }}
-                          className="w-full bg-obsidian-800 border border-gold-700/12 rounded-xl px-3 py-2 text-slate2-200 text-xs appearance-none focus:outline-none focus:border-gold-500/38 pr-7"
-                        >
+                        <select value={category} onChange={e => { setCategory(e.target.value); setPage(1); }}
+                          className="w-full bg-obsidian-800 border border-gold-700/12 rounded-xl px-3 py-2 text-slate2-200 text-xs appearance-none focus:outline-none focus:border-gold-500/38 pr-7">
                           {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                         </select>
                         <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate2-400/40 pointer-events-none" />
                       </div>
                     </div>
-                    {/* Başlangıç tarihi */}
                     <div>
                       <label className="block text-slate2-400/55 text-[10px] tracking-wider uppercase font-mono mb-1.5">Başlangıç</label>
-                      <input
-                        type="date" value={dateFrom}
-                        onChange={e => { setDateFrom(e.target.value); setPage(1); }}
-                        className="w-full bg-obsidian-800 border border-gold-700/12 rounded-xl px-3 py-2 text-slate2-200 text-xs focus:outline-none focus:border-gold-500/38"
-                      />
+                      <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }}
+                        className="w-full bg-obsidian-800 border border-gold-700/12 rounded-xl px-3 py-2 text-slate2-200 text-xs focus:outline-none focus:border-gold-500/38" />
                     </div>
-                    {/* Bitiş tarihi */}
                     <div>
                       <label className="block text-slate2-400/55 text-[10px] tracking-wider uppercase font-mono mb-1.5">Bitiş</label>
-                      <input
-                        type="date" value={dateTo}
-                        onChange={e => { setDateTo(e.target.value); setPage(1); }}
-                        className="w-full bg-obsidian-800 border border-gold-700/12 rounded-xl px-3 py-2 text-slate2-200 text-xs focus:outline-none focus:border-gold-500/38"
-                      />
+                      <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }}
+                        className="w-full bg-obsidian-800 border border-gold-700/12 rounded-xl px-3 py-2 text-slate2-200 text-xs focus:outline-none focus:border-gold-500/38" />
                     </div>
                   </div>
                   {activeCount > 0 && (
-                    <button
-                      onClick={clearAll}
-                      className="mt-3 flex items-center gap-1.5 text-slate2-400 hover:text-red-400 text-xs transition-colors"
-                    >
+                    <button onClick={clearAll} className="mt-3 flex items-center gap-1.5 text-slate2-400 hover:text-red-400 text-xs transition-colors">
                       <X size={11} /> Tüm filtreleri temizle
                     </button>
                   )}
@@ -498,9 +490,7 @@ export default function PanelPage() {
               )}
             </header>
 
-            {/* İçerik */}
             <div className="flex-1 p-6">
-              {/* Başlık + aktif filtre chips */}
               <div className="flex items-start justify-between mb-5 gap-4">
                 <div>
                   <h1 className="font-display text-xl font-light text-slate2-200">
@@ -534,17 +524,15 @@ export default function PanelPage() {
                 )}
               </div>
 
-              {/* Hata */}
               {error && (
                 <div className="mb-5 flex items-center gap-2 px-4 py-3 bg-red-500/6 border border-red-500/18 rounded-xl text-red-400 text-sm">
                   <X size={14} className="flex-shrink-0" /> {error}
                 </div>
               )}
 
-              {/* Grid */}
               {loading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {Array.from({ length: PAGE_SIZE }).map((_, i) => <Skeleton key={i} />)}
+                <div className="space-y-3">
+                  {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} />)}
                 </div>
               ) : docs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -559,8 +547,10 @@ export default function PanelPage() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {docs.map(doc => <DocCard key={doc.id} doc={doc} />)}
+                <div className="space-y-3">
+                  {groupDocsByDate(docs).map(([dateKey, dateDocs]) => (
+                    <DateGroup key={dateKey} dateKey={dateKey} docs={dateDocs} />
+                  ))}
                 </div>
               )}
 

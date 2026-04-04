@@ -296,19 +296,7 @@
 .reveal-delay-4 { transition-delay: 0.4s; }
 
 
-/* ── Panel Page Utilities ─────────────────────────────────── */
-.panel-doc-card {
-  background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.008) 100%);
-  border: 1px solid rgba(212,160,23,0.08);
-  border-radius: 14px;
-  transition: all 0.3s cubic-bezier(0.4,0,0.2,1);
-}
-.panel-doc-card:hover {
-  border-color: rgba(212,160,23,0.25);
-  background: linear-gradient(135deg, rgba(212,160,23,0.04) 0%, rgba(255,255,255,0.012) 100%);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 28px rgba(212,160,23,0.06);
-}
+
 .filter-chip {
   display: inline-flex;
   align-items: center;
@@ -331,3 +319,146 @@
 .custom-scrollbar::-webkit-scrollbar { width: 3px; }
 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(212,160,23,0.2); border-radius: 2px; }
+
+/* ── Date Group Accordion ─────────────────────────────────── */
+.date-group-card {
+  background: linear-gradient(135deg, rgba(255,255,255,0.025) 0%, rgba(255,255,255,0.008) 100%);
+  border: 1px solid rgba(212,160,23,0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+.date-group-card--open {
+  border-color: rgba(212,160,23,0.22);
+  box-shadow: 0 4px 24px rgba(212,160,23,0.06);
+}
+.date-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  gap: 8px;
+}
+.date-group-card:not(.date-group-card--open) .date-group-header:hover {
+  background: rgba(212,160,23,0.03);
+}
+.date-group-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(212,160,23,0.07);
+  border: 1px solid rgba(212,160,23,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.date-group-label {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: #d8d8e4;
+  letter-spacing: 0.01em;
+}
+.date-group-count {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.68rem;
+  color: rgba(212,160,23,0.6);
+  background: rgba(212,160,23,0.08);
+  border: 1px solid rgba(212,160,23,0.14);
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.date-group-chevron {
+  color: rgba(212,160,23,0.35);
+  transition: transform 0.3s cubic-bezier(0.4,0,0.2,1), color 0.2s;
+  flex-shrink: 0;
+}
+.date-group-chevron--open {
+  transform: rotate(180deg);
+  color: rgba(212,160,23,0.7);
+}
+
+/* Accordion body */
+.date-group-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1);
+}
+.date-group-body--open {
+  max-height: 2000px;
+}
+.date-group-list {
+  margin: 0;
+  padding: 2px 0 10px 0;
+  border-top: 1px solid rgba(212,160,23,0.07);
+}
+
+.rg-section-block {
+  padding: 10px 18px 4px;
+}
+.rg-section-block + .rg-section-block {
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.rg-section-title {
+  font-family: "DM Sans", sans-serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.03em;
+  color: rgba(232,232,240,0.92);
+  margin: 4px 0 10px;
+}
+.rg-subsection-block {
+  margin: 0 0 8px;
+}
+.rg-subsection-title {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(212,160,23,0.84);
+  letter-spacing: 0.02em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+.rg-subsection-block ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Individual document row */
+.date-doc-row {
+  animation: fadeSlideIn 0.25s ease both;
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.date-doc-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  text-align: left;
+  transition: background 0.18s ease;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.date-doc-btn:hover {
+  background: rgba(212,160,23,0.04);
+}
+.date-doc-btn:last-child {
+  border-bottom: none;
+}
+.date-doc-title {
+  flex: 1;
+  font-size: 0.84rem;
+  font-weight: 400;
+  color: rgba(216,216,228,0.85);
+  line-height: 1.45;
+  text-align: left;
+}
+.date-doc-arrow {
+  flex-shrink: 0;
+}
